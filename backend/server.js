@@ -1,71 +1,23 @@
-import express from 'express';
-import cors from 'cors';
-import rateLimit from 'express-rate-limit';
-import { spawn } from 'node:child_process';
-import { PassThrough } from 'node:stream';
-
-const app = express();
-const PORT = Number(process.env.PORT || 8080);
-const YTDLP = process.env.YTDLP_PATH || 'yt-dlp';
-const ALLOWED = (process.env.ALLOWED_DOMAINS || 'bilibili.com,www.bilibili.com,b23.tv').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
-
-app.use(cors({ origin: true, methods: ['GET', 'OPTIONS'] }));
-app.use(rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }));
-
-function validUrl(raw) {
-  try {
-    const u = new URL(raw);
-    if (!['http:', 'https:'].includes(u.protocol)) return null;
-    const host = u.hostname.toLowerCase();
-    if (!ALLOWED.some(d => host === d || host.endsWith(`.${d}`))) return null;
-    return u;
-  } catch { return null; }
-}
-
-function run(args, timeout = 55_000) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(YTDLP, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '', err = '';
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('yt-dlp timeout')); }, timeout);
-    child.stdout.on('data', d => { out += d.toString(); if (out.length > 2_000_000) { child.kill('SIGKILL'); reject(new Error('yt-dlp output too large')); } });
-    child.stderr.on('data', d => { err += d.toString(); });
-    child.on('error', e => { clearTimeout(timer); reject(e); });
-    child.on('close', code => { clearTimeout(timer); if (code === 0) resolve({out,err}); else reject(new Error(err.trim().slice(-1500) || `yt-dlp exited with ${code}`)); });
-  });
-}
-
-app.get('/health', (_req,res) => res.json({ ok:true, service:'BiliReels Video API', ytdlp:YTDLP }));
-
-app.get('/resolve', async (req,res) => {
-  const u = validUrl(req.query.url);
-  if (!u) return res.status(400).json({ok:false,error:'Unsupported or invalid URL. Only configured public video domains are accepted.'});
-  try {
-    const {out} = await run(['--dump-single-json','--no-warnings','--no-playlist','--skip-download',u.toString()], 45_000);
-    const info = JSON.parse(out.trim().split('\n').pop());
-    res.json({ ok:true, title:info.title || 'Video', duration:Number(info.duration || 0), thumbnail:info.thumbnail || null, uploader:info.uploader || info.channel || null, filename:(info.title || 'BiliReels').replace(/[^a-z0-9._-]+/gi,'_').slice(0,100)+'.mp4' });
-  } catch (e) { res.status(502).json({ok:false,error:e.message}); }
-});
-
-app.get('/stream', async (req,res) => {
-  const u = validUrl(req.query.url);
-  if (!u) return res.status(400).json({ok:false,error:'Unsupported or invalid URL.'});
-  try {
-    // Prefer a single-file MP4 so the browser can fetch one stream and ffmpeg.wasm
-    // can process it locally. If unavailable, fall back to best available format.
-    const {out} = await run(['--get-url','--no-warnings','--no-playlist','-f','best[ext=mp4]/best',u.toString()], 45_000);
-    const direct = out.trim().split(/\r?\n/).filter(Boolean)[0];
-    if (!direct) throw new Error('No playable stream URL was returned.');
-    const upstream = await fetch(direct, { headers:{ 'User-Agent':'Mozilla/5.0', Referer:u.origin + '/' }, signal:AbortSignal.timeout(30_000) });
-    if (!upstream.ok || !upstream.body) throw new Error(`Source stream returned HTTP ${upstream.status}`);
-    res.status(upstream.status);
-    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'video/mp4');
-    const len=upstream.headers.get('content-length'); if(len)res.setHeader('Content-Length',len);
-    res.setHeader('Cache-Control','no-store');
-    // Web Streams -> Node stream bridge.
-    const nodeStream = PassThrough.fromWeb(upstream.body);
-    nodeStream.on('error',()=>res.destroy());
-    nodeStream.pipe(res);
-  } catch (e) { if(!res.headersSent) res.status(502).json({ok:false,error:e.message}); else res.destroy(); }
-});
-
-app.listen(PORT, () => console.log(`BiliReels API listening on :${PORT}`));
+import express from "express";
+import cors from "cors";
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import {execFile} from "node:child_process";
+import {promisify} from "node:util";
+const exec=promisify(execFile);
+const app=express(); app.use(cors()); app.use(express.json({limit:"256kb"}));
+const PORT=process.env.PORT||8080, jobs=new Map(), TTL=Number(process.env.JOB_TTL_MS||3600000);
+const id=()=>crypto.randomUUID();
+const clean=s=>String(s||"file").replace(/[^\w.-]+/g,"_").slice(0,90);
+const send=(res,d,s=200)=>res.status(s).json(d);
+function validBili(url){const u=new URL(url),h=u.hostname.toLowerCase();if(!h.endsWith("bilibili.com")&&h!=="b23.tv")throw Error("Only BiliBili URLs are supported.");}
+app.get("/health",(q,r)=>send(r,{ok:true,service:"BiliReels Video Engine"}));
+app.post("/analyze",async(q,r)=>{try{const url=q.body?.url;if(!url)throw Error("Missing url");validBili(url);const {stdout}=await exec("yt-dlp",["--dump-single-json","--skip-download","--no-warnings","--no-playlist",url],{timeout:90000,maxBuffer:8e6});const d=JSON.parse(stdout);send(r,{id:d.id,bvid:d.id?.startsWith("BV")?d.id:null,title:d.title||"BiliBili Video",duration:Number(d.duration)||0,thumbnail:d.thumbnail||null,author:d.uploader||d.channel||"",webpageUrl:d.webpage_url||url});}catch(e){send(r,{error:e.message||"Analyze failed"},502)}});
+app.post("/jobs",async(q,r)=>{try{const p=q.body||{};validBili(p.sourceUrl);const jobId=id(),dir=await fs.mkdtemp(path.join(os.tmpdir(),"br-"));jobs.set(jobId,{jobId,status:"queued",progress:0,message:"Queued",dir,reels:[],zipUrl:null,createdAt:Date.now()});run(jobId,p).catch(e=>{const j=jobs.get(jobId);if(j){j.status="failed";j.error=e.message;j.message=e.message}});send(r,{jobId,status:"queued",message:"Job queued"},202)}catch(e){send(r,{error:e.message},400)}});
+app.get("/jobs/:id",(q,r)=>{const j=jobs.get(q.params.id);if(!j)return send(r,{error:"Job not found"},404);send(r,{jobId:j.jobId,status:j.status,progress:j.progress,message:j.message,error:j.error||null,reels:j.reels,zipUrl:j.zipUrl})});
+app.get("/files/:id/:name",async(q,r)=>{const j=jobs.get(q.params.id);if(!j)return r.status(404).end();const name=path.basename(q.params.name);if(!name.endsWith(".mp4")&&!name.endsWith(".zip"))return r.status(400).end();const file=path.join(j.dir,name);try{const st=await fs.stat(file);r.setHeader("Content-Type",name.endsWith(".zip")?"application/zip":"video/mp4");r.setHeader("Content-Length",st.size);r.setHeader("Content-Disposition",`attachment; filename="${name}"`);(await import("node:fs")).createReadStream(file).pipe(r)}catch{r.status(404).end()}});
+async function run(id,p){const j=jobs.get(id);j.status="processing";j.message="Downloading from BiliBili…";const src=path.join(j.dir,"source.%(ext)s");await exec("yt-dlp",["--no-playlist","-f","bv*+ba/b","--merge-output-format","mp4","-o",src,p.sourceUrl],{timeout:25*60*1000,maxBuffer:4e6});const fsys=await fs.readdir(j.dir);const source=fsys.find(x=>x.startsWith("source.")&&x.endsWith(".mp4"));if(!source)throw Error("Download did not produce MP4");j.progress=.25;j.message="Encoding 9:16 Reels…";const q=p.quality==="1080p"?"1080p":p.quality==="480p"?"480p":"720p";const [w,h]=q==="1080p"?[1080,1920]:q==="480p"?[480,854]:[720,1280];const seg=Math.max(10,Math.min(600,Number(p.split?.duration)||30));await exec("ffmpeg",["-y","-i",path.join(j.dir,source),"-vf",`scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`,"-map","0:v:0","-map","0:a:0?","-c:v","libx264","-preset","veryfast","-crf",q==="1080p"?"20":q==="720p"?"21":"23","-c:a","aac","-b:a","128k","-f","segment","-segment_time",String(seg),"-reset_timestamps","1","-segment_format","mp4","-movflags","+faststart","reel_%03d.mp4"].map(x=>x==="reel_%03d.mp4"?path.join(j.dir,x):x),{timeout:35*60*1000,maxBuffer:4e6});const outs=(await fs.readdir(j.dir)).filter(x=>/^reel_\d+\.mp4$/.test(x)).sort();if(!outs.length)throw Error("FFmpeg produced no clips");const base=process.env.PUBLIC_BASE_URL?.replace(/\/$/,"")||"";j.reels=outs.map((n,i)=>({filename:`BiliReels_Reel_${String(i+1).padStart(3,"0")}.mp4`,duration:seg,quality:q,width:w,height:h,url:base?`${base}/files/${id}/${n}`:null}));j.progress=1;j.status="completed";j.message=`Created ${outs.length} Reel(s).`;const zipName="BiliReels_Reels.zip";await exec("zip",["-j",path.join(j.dir,zipName),...outs.map(n=>path.join(j.dir,n))]);j.zipUrl=base?`${base}/files/${id}/${zipName}`:null}
+setInterval(async()=>{const now=Date.now();for(const [k,j] of jobs){if(now-j.createdAt>TTL){await fs.rm(j.dir,{recursive:true,force:true}).catch(()=>{});jobs.delete(k)}}},60000);
+app.listen(PORT,()=>console.log(`BiliReels engine on ${PORT}`));
