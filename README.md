@@ -1,28 +1,14 @@
-# BiliReels — PHASE 1
+# BiliReels — Phase 2 Fix / Source Input
 
-Professional Frontend foundation for BiliReels.
+This build fixes the two source-input problems reported on the live Netlify site:
 
-## Included
-- Responsive / mobile-first interface
-- Upload + drag & drop
-- Real local video preview
-- Source URL tab prepared for future API integration
-- 9:16 output preview
-- 480p / 720p / 1080p UI
-- 30 / 60 / 90 / 120 / custom split duration
-- Smart Split toggle
-- Subtitle toggle + language selector
-- Logo upload with live size/opacity preview
-- Processing/progress UI
-- Output/Reels preview
-- Dark/light theme
-- Toast notifications
+- local video selection is initialized safely after DOM load and shows file metadata/preview;
+- BiliBili URL analysis now uses a Netlify Function to resolve the BV id and fetch public video metadata server-side.
+
+The UI remains the premium BiliReels interface.
 
 ## Important
-This phase is frontend-only. It does not download remote videos, run FFmpeg, generate subtitles, translate content, or create real MP4/ZIP outputs.
+This build does **not** pretend that remote BiliBili downloading is complete. The function resolves metadata only. Actual remote stream acquisition and FFmpeg processing are the next backend step.
 
-Next phase: browser-side video engine / local processing experiments.
-
-
-## Visual upgrade
-Premium animated background, cinematic gradients, glass panels, glow borders, hover micro-interactions and luxury purple/cyan/gold visual language were added without removing the Phase 1 controls.
+## Deploy
+Commit all files to the root of the `main` branch. Netlify will deploy automatically.
