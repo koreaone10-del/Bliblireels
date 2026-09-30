@@ -1,10 +1,10 @@
-FROM python:3.13-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg nodejs npm ca-certificates curl && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir -U yt-dlp
+FROM node:22-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg zip python3 python3-pip ca-certificates && pip3 install --break-system-packages -U yt-dlp && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY package.json ./
+COPY package.json .
 RUN npm install --omit=dev
-COPY server.js ./
+COPY server.js .
+ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
 CMD ["npm","start"]
