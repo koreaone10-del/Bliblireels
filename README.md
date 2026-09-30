@@ -1,27 +1,24 @@
-# BiliReels — Video → Reels Studio
+# BiliReels — PHASE 1
 
-واجهة أولية مستقبلية وخفيفة لمشروع BiliReels.
+Professional Frontend foundation for BiliReels.
 
-## ما تم بناؤه
-- Landing page responsive / mobile-first
-- إدخال رابط وتحليل واجهة المصدر
-- اختيار الجودة
-- Auto Subtitle + اختيار اللغة (واجهة)
-- رفع Logo بصيغ PNG/JPG/WEBP/SVG
-- التحكم بالحجم والشفافية
-- Smart Split بأطوال 60/90/120 ثانية
-- شاشة Output وترقيم الـReels
-- تصميم جاهز لربط Backend لاحقاً
+## Included
+- Responsive / mobile-first interface
+- Upload + drag & drop
+- Real local video preview
+- Source URL tab prepared for future API integration
+- 9:16 output preview
+- 480p / 720p / 1080p UI
+- 30 / 60 / 90 / 120 / custom split duration
+- Smart Split toggle
+- Subtitle toggle + language selector
+- Logo upload with live size/opacity preview
+- Processing/progress UI
+- Output/Reels preview
+- Dark/light theme
+- Toast notifications
 
-## الخطوة التالية
-ربط الواجهة بـAPI حقيقي لمعالجة المحتوى المصرح به:
-1. Source adapter
-2. Job queue
-3. FFmpeg worker
-4. Speech-to-text / translation
-5. Subtitle burn-in
-6. Branding
-7. Reel generation
-8. Object storage + signed download URLs
+## Important
+This phase is frontend-only. It does not download remote videos, run FFmpeg, generate subtitles, translate content, or create real MP4/ZIP outputs.
 
-> الواجهة الحالية Demo ولا تقوم بتنزيل محتوى من Bilibili أو تجاوز أي حماية أو حقوق ملكية.
+Next phase: browser-side video engine / local processing experiments.
