@@ -22,3 +22,7 @@ Professional Frontend foundation for BiliReels.
 This phase is frontend-only. It does not download remote videos, run FFmpeg, generate subtitles, translate content, or create real MP4/ZIP outputs.
 
 Next phase: browser-side video engine / local processing experiments.
+
+
+## Visual upgrade
+Premium animated background, cinematic gradients, glass panels, glow borders, hover micro-interactions and luxury purple/cyan/gold visual language were added without removing the Phase 1 controls.
