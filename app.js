@@ -1,3 +1,5 @@
+import { processVideo, onEngineProgress } from './ffmpeg-engine.js';
+
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 
@@ -178,47 +180,109 @@ $('#logoSize').addEventListener('input', updateLogo);
 $('#logoOpacity').addEventListener('input', updateLogo);
 updateLogo();
 
+const activeDownloads = [];
+
+function renderReels(reels) {
+  const list = $('#reelsList');
+  list.innerHTML = '';
+  activeDownloads.length = 0;
+
+  reels.forEach((reel) => {
+    const item = document.createElement('article');
+    item.className = 'reel';
+    item.innerHTML = `
+      <div>
+        <strong>${reel.filename}</strong>
+        <small>9:16 · ${Math.round(reel.duration)}s · ${reel.quality} · ${reel.width}×${reel.height}</small>
+      </div>
+      <div class="reel-actions">
+        <a class="secondary small" href="${reel.url}" download="${reel.filename}">تحميل</a>
+        <a class="secondary small" href="${reel.url}" target="_blank" rel="noopener">معاينة</a>
+      </div>`;
+    list.appendChild(item);
+    activeDownloads.push(reel);
+  });
+}
+
+function updateProcessingProgress(progress) {
+  const percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
+  $('#progressBar').style.width = `${percent}%`;
+  $('#progressText').textContent = `${percent}%`;
+}
+
+onEngineProgress(({ progress }) => updateProcessingProgress(progress));
+
 $('#processBtn').addEventListener('click', async () => {
-  if (!state.file && state.source !== 'url') {
-    toast('ارفع فيديو أو أدخل مصدراً أولاً.');
+  if (!state.file) {
+    toast('المعالجة الحقيقية في هذه المرحلة تحتاج فيديو محلياً.');
     return;
   }
 
   const result = $('#result');
   const bar = $('#progressBar');
   const text = $('#progressText');
-  const list = $('#reelsList');
   result.classList.remove('hidden');
   result.scrollIntoView({behavior:'smooth', block:'start'});
-  list.innerHTML = '';
-  $('#resultStatus').textContent = '● PROCESSING';
+  bar.style.width = '0%';
+  text.textContent = '0%';
+  $('#reelsList').innerHTML = '';
+  $('#resultStatus').textContent = '● LOADING ENGINE';
   $('#resultStatus').className = 'status busy';
+  $('#resultNote').textContent = 'يتم تشغيل FFmpeg داخل المتصفح. الفيديو لا يُرفع إلى Netlify أثناء هذه العملية.';
 
-  for (let p = 0; p <= 100; p += 10) {
-    await new Promise(r => setTimeout(r, 90));
-    bar.style.width = `${p}%`;
-    text.textContent = `${p}%`;
+  const button = $('#processBtn');
+  button.disabled = true;
+  button.classList.add('processing');
+
+  try {
+    const output = await processVideo({
+      file: state.file,
+      duration: state.duration,
+      quality: state.quality,
+      smartSplit: state.smartSplit,
+      onStatus: ({ stage, message }) => {
+        $('#resultStatus').textContent = stage === 'encoding' ? '● ENCODING' : '● ' + stage.toUpperCase();
+        if (message) $('#resultNote').textContent = message;
+      }
+    });
+
+    if (!output.reels.length) throw new Error('لم ينتج محرك الفيديو أي مقطع.');
+
+    renderReels(output.reels);
+    updateProcessingProgress(1);
+    $('#resultStatus').textContent = '✓ COMPLETE';
+    $('#resultStatus').className = 'status ready';
+    $('#resultNote').textContent = `تم إنشاء ${output.reels.length} Reel حقيقية بصيغة MP4 (${output.width}×${output.height}). يمكنك تحميل كل مقطع مباشرة.`;
+    toast(`تم إنشاء ${output.reels.length} Reels بنجاح.`);
+  } catch (error) {
+    console.error(error);
+    $('#resultStatus').textContent = '× ERROR';
+    $('#resultStatus').className = 'status error';
+    $('#resultNote').textContent = `تعذر إكمال المعالجة: ${error?.message || 'خطأ غير معروف'}`;
+    toast('حدث خطأ أثناء معالجة الفيديو.');
+  } finally {
+    button.disabled = false;
+    button.classList.remove('processing');
   }
-
-  const sourceDuration = state.file ? ($('#videoPreview').duration || 0) : 0;
-  const count = sourceDuration > 0 ? Math.max(1, Math.ceil(sourceDuration / state.duration)) : 4;
-  const safeCount = Math.min(count, 24);
-
-  for (let i = 1; i <= safeCount; i++) {
-    const item = document.createElement('div');
-    item.className = 'reel';
-    item.innerHTML = `<strong>BiliReels_Reel_${String(i).padStart(3,'0')}.mp4</strong><small>9:16 · ${state.duration}s · ${state.quality} · READY</small>`;
-    list.appendChild(item);
-  }
-
-  $('#resultStatus').textContent = '✓ COMPLETE';
-  $('#resultStatus').className = 'status ready';
-  $('#resultNote').textContent = `تم إنشاء ${safeCount} عناصر معاينة. هذه مازالت واجهة Frontend؛ التصدير الحقيقي سيأتي مع FFmpeg Worker.`;
-  toast('اكتملت معاينة عملية الإنشاء.');
 });
 
-$('#downloadAll').addEventListener('click', () => {
-  toast('زر ZIP جاهز للربط مع Storage في مرحلة Backend.');
+$('#downloadAll').addEventListener('click', async () => {
+  if (!activeDownloads.length) return toast('لا توجد Reels جاهزة للتحميل.');
+
+  // ZIP packaging is intentionally deferred until the Storage/Backend phase.
+  // For now each generated MP4 has its own download link, avoiding another heavy
+  // client-side dependency on mobile devices.
+  activeDownloads.forEach((reel, index) => {
+    setTimeout(() => {
+      const link = document.createElement('a');
+      link.href = reel.url;
+      link.download = reel.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }, index * 180);
+  });
+  toast(`بدأ تحميل ${activeDownloads.length} ملفات.`);
 });
 
 $('#themeBtn').addEventListener('click', () => {
