@@ -1,5 +1,4 @@
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-
 const API={analyze:'/api/analyze',process:'/api/process'};
 
 const ui={
@@ -172,8 +171,13 @@ function toast(m){
   const e=$('#toast');
   e.textContent=m;
   e.classList.add('show');
+
   clearTimeout(window.__t);
-  window.__t=setTimeout(()=>e.classList.remove('show'),3200);
+
+  window.__t=setTimeout(
+    ()=>e.classList.remove('show'),
+    3200
+  );
 }
 
 function time(v){
@@ -218,7 +222,10 @@ $('#analyzeForm').onsubmit=async e=>{
   try{
     const u=new URL(url);
 
-    if(!/(^|\.)bilibili\.com$/i.test(u.hostname)&&u.hostname.toLowerCase()!=='b23.tv'){
+    if(
+      !/(^|\.)bilibili\.com$/i.test(u.hostname)&&
+      u.hostname.toLowerCase()!=='b23.tv'
+    ){
       throw Error('Only BiliBili URLs are supported.');
     }
   }catch(x){
@@ -230,8 +237,11 @@ $('#analyzeForm').onsubmit=async e=>{
   $('#sourceStatus').className='status busy';
 
   try{
-    const r=await fetch(`${API.analyze}?url=${encodeURIComponent(url)}`);
-    const d=await r.json();
+    const r=await fetch(
+      `${API.analyze}?url=${encodeURIComponent(url)}`
+    );
+
+    const d=await r.json().catch(()=>({}));
 
     if(!r.ok)throw Error(d.error||'Analysis failed');
 
@@ -252,6 +262,7 @@ $('#analyzeForm').onsubmit=async e=>{
     $('#workspace').classList.remove('hidden');
 
     summary();
+
     toast('Source analyzed.');
   }catch(x){
     $('#sourceStatus').textContent='● ERROR';
@@ -265,9 +276,12 @@ $('#analyzeForm').onsubmit=async e=>{
 $$('.options,.split-options').forEach(g=>{
   g.onclick=e=>{
     const b=e.target.closest('.option');
+
     if(!b)return;
 
-    g.querySelectorAll('.option').forEach(x=>x.classList.remove('active'));
+    g.querySelectorAll('.option')
+      .forEach(x=>x.classList.remove('active'));
+
     b.classList.add('active');
 
     if(g.dataset.group==='quality'){
@@ -275,7 +289,8 @@ $$('.options,.split-options').forEach(g=>{
     }else{
       const c=b.dataset.value==='custom';
 
-      $('#customDurationWrap').classList.toggle('hidden',!c);
+      $('#customDurationWrap')
+        .classList.toggle('hidden',!c);
 
       if(!c)state.duration=+b.dataset.value;
     }
@@ -285,7 +300,11 @@ $$('.options,.split-options').forEach(g=>{
 });
 
 $('#customDuration').oninput=e=>{
-  state.duration=Math.max(10,Math.min(600,+e.target.value||10));
+  state.duration=Math.max(
+    10,
+    Math.min(600,+e.target.value||10)
+  );
+
   summary();
 };
 
@@ -319,11 +338,18 @@ $('#logoOpacity').oninput=e=>{
 
 function showResult(){
   $('#result').classList.remove('hidden');
-  $('#result').scrollIntoView({behavior:'smooth',block:'start'});
+
+  $('#result').scrollIntoView({
+    behavior:'smooth',
+    block:'start'
+  });
 }
 
 function prog(p,m){
-  p=Math.max(0,Math.min(100,Math.round(p)));
+  p=Math.max(
+    0,
+    Math.min(100,Math.round(p))
+  );
 
   $('#progressBar').style.width=p+'%';
   $('#progressText').textContent=p+'%';
@@ -334,14 +360,20 @@ function prog(p,m){
 async function poll(id){
   clearInterval(state.poll);
 
-  state.poll=setInterval(async()=>{
+  const check=async()=>{
     try{
-      const r=await fetch(`${API.process}?jobId=${encodeURIComponent(id)}`);
-      const d=await r.json();
+      const r=await fetch(
+        `${API.process}?jobId=${encodeURIComponent(id)}`
+      );
+
+      const d=await r.json().catch(()=>({}));
 
       if(!r.ok)throw Error(d.error||'Status failed');
 
-      prog((d.progress||0)*100,d.message);
+      prog(
+        (d.progress||0)*100,
+        d.message
+      );
 
       if(d.status==='completed'){
         clearInterval(state.poll);
@@ -349,16 +381,28 @@ async function poll(id){
         $('#resultStatus').textContent='✓ COMPLETE';
         $('#resultStatus').className='status ready';
 
-        const l=$('#reelsList');
-
-        l.innerHTML=(d.reels||[])
-          .map(x=>`<a class="reel" href="${x.url||'#'}" target="_blank" rel="noopener"><strong>${x.filename}</strong><small>${x.quality||state.quality} · 9:16</small><span>↧</span></a>`)
+        $('#reelsList').innerHTML=
+          (d.reels||[])
+          .map(x=>`
+            <a
+              class="reel"
+              href="${x.url||'#'}"
+              target="_blank"
+              rel="noopener"
+            >
+              <strong>${x.filename}</strong>
+              <small>${x.quality||state.quality} · 9:16</small>
+              <span>↧</span>
+            </a>
+          `)
           .join('');
 
         $('#downloadAll').disabled=!d.zipUrl;
 
         if(d.zipUrl){
-          $('#downloadAll').onclick=()=>location.href=d.zipUrl;
+          $('#downloadAll').onclick=()=>{
+            location.href=d.zipUrl;
+          };
         }
 
         $('#processBtn').disabled=false;
@@ -370,6 +414,7 @@ async function poll(id){
 
         $('#resultStatus').textContent='● ERROR';
         $('#resultStatus').className='status error';
+
         $('#processBtn').disabled=false;
 
         toast(d.error||'Processing failed');
@@ -380,22 +425,36 @@ async function poll(id){
       $('#processBtn').disabled=false;
       toast(x.message);
     }
-  },1500);
+  };
+
+  await check();
+
+  if(state.job===id){
+    state.poll=setInterval(check,1500);
+  }
 }
 
 $('#processBtn').onclick=async()=>{
-  if(!state.source)return toast('Analyze a BiliBili URL first.');
+  if(!state.source){
+    return toast('Analyze a BiliBili URL first.');
+  }
 
   showResult();
+
   prog(0,'Starting engine…');
 
   $('#resultStatus').textContent='● STARTING';
   $('#resultStatus').className='status busy';
+
   $('#processBtn').disabled=true;
 
   const body={
     sourceUrl:state.sourceUrl,
-    bvid:state.source.bvid||state.source.id,
+
+    bvid:
+      state.source.bvid||
+      state.source.id,
+
     quality:state.quality,
 
     split:{
@@ -422,23 +481,42 @@ $('#processBtn').onclick=async()=>{
   };
 
   try{
-    const r=await fetch(API.process,{
-      method:'POST',
-      headers:{'content-type':'application/json'},
-      body:JSON.stringify(body)
-    });
+    const r=await fetch(
+      API.process,
+      {
+        method:'POST',
+        headers:{
+          'content-type':'application/json'
+        },
+        body:JSON.stringify(body)
+      }
+    );
 
-    const d=await r.json();
+    const d=await r.json().catch(()=>({}));
 
-    if(!r.ok)throw Error(d.error||'Could not start job');
+    if(!r.ok){
+      throw Error(
+        d.error||
+        'Could not start job'
+      );
+    }
+
+    if(!d.jobId){
+      throw Error(
+        'Video engine did not return a jobId'
+      );
+    }
 
     state.job=d.jobId;
+
     poll(state.job);
 
   }catch(x){
     $('#resultStatus').textContent='● ERROR';
     $('#resultStatus').className='status error';
+
     $('#processBtn').disabled=false;
+
     toast(x.message);
   }
 };
