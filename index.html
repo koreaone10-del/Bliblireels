@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="BiliReels — منصة خفيفة لمعالجة الفيديو وتحويل المحتوى المصرّح به إلى Reels." />
+  <meta name="theme-color" content="#080a12" />
+  <title>BiliReels — Video to Reels Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <header class="nav">
+    <a class="brand" href="#top" aria-label="BiliReels">
+      <span class="brand-mark">BR</span>
+      <span>Bili<span>Reels</span></span>
+    </a>
+    <nav>
+      <a href="#features">المميزات</a>
+      <a href="#workflow">كيف يعمل</a>
+      <a href="#studio">الاستوديو</a>
+    </nav>
+    <button class="ghost" id="themeBtn" type="button">◐</button>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow"><i></i> VIDEO → REELS STUDIO</div>
+        <h1>حوّل الفيديو الطويل<br><em>إلى Reels جاهزة.</em></h1>
+        <p>واجهة واحدة لتحليل الفيديو، اختيار الجودة، الترجمة، الـBranding وتقسيم المحتوى إلى أجزاء منظمة — للمحتوى الذي تملك حق استخدامه.</p>
+        <div class="hero-actions">
+          <a class="primary" href="#studio">ابدأ الآن <span>↙</span></a>
+          <a class="secondary" href="#workflow">شاهد الطريقة</a>
+        </div>
+        <div class="trust"><span>⚡ سريع</span><span>◈ خفيف</span><span>▣ Mobile First</span></div>
+      </div>
+      <div class="hero-card">
+        <div class="scan"></div>
+        <div class="mini-top"><span>LIVE PROCESSOR</span><b>READY</b></div>
+        <div class="video-preview">
+          <div class="play">▶</div>
+          <div class="preview-caption">YOUR VIDEO</div>
+        </div>
+        <div class="stats">
+          <div><small>FORMAT</small><strong>9:16</strong></div>
+          <div><small>SUBTITLE</small><strong>AI</strong></div>
+          <div><small>OUTPUT</small><strong>REELS</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dropzone" id="studio">
+      <div class="drop-head">
+        <div><span class="section-kicker">01 / SOURCE</span><h2>أدخل رابط الفيديو</h2></div>
+        <span class="status-dot">● READY</span>
+      </div>
+      <form id="analyzeForm">
+        <div class="url-row">
+          <span class="link-icon">↗</span>
+          <input id="videoUrl" type="url" placeholder="ألصق رابط الفيديو هنا…" autocomplete="off" required />
+          <button class="primary compact" type="submit">تحليل الرابط</button>
+        </div>
+      </form>
+      <p class="hint">يدعم الموقع لاحقاً مصادر مصرح بها وملفات الفيديو المحلية. لا نستخدم التحليل لتجاوز الحماية أو حقوق الملكية.</p>
+    </section>
+
+    <section class="workspace hidden" id="workspace">
+      <div class="workspace-head">
+        <div><span class="section-kicker">02 / WORKSPACE</span><h2>إعدادات المعالجة</h2></div>
+        <span id="sourceState" class="pill">ANALYZED</span>
+      </div>
+      <div class="workspace-grid">
+        <article class="panel source-panel">
+          <div class="fake-thumb"><span>VIDEO</span></div>
+          <div class="source-info"><strong id="sourceTitle">Video source</strong><span id="sourceUrl">—</span></div>
+          <div class="meta"><span>⏱ 01:42:18</span><span>▣ 720p</span><span>◌ 16:9</span></div>
+        </article>
+        <article class="panel">
+          <div class="panel-title"><span>QUALITY</span><span>اختيار الجودة</span></div>
+          <div class="options" data-group="quality">
+            <button class="option" data-value="480p">480p <small>خفيف</small></button>
+            <button class="option active" data-value="720p">720p <small>متوازن</small></button>
+            <button class="option" data-value="1080p">1080p <small>أعلى</small></button>
+          </div>
+        </article>
+        <article class="panel">
+          <div class="panel-title"><span>SUBTITLES</span><span>الترجمة</span></div>
+          <label class="switch-line"><span>ترجمة تلقائية</span><input id="subtitleToggle" type="checkbox" checked><i></i></label>
+          <select id="language"><option>العربية</option><option>Français</option><option>English</option><option>Türkçe</option><option>Español</option></select>
+          <div class="subtitle-preview">هذا مثال لمكان الترجمة أسفل الفيديو</div>
+        </article>
+        <article class="panel">
+          <div class="panel-title"><span>BRANDING</span><span>الشعار</span></div>
+          <label class="upload"><input id="logoInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"> <span>＋ أضف Logo</span><small>PNG / JPG / WEBP / SVG</small></label>
+          <div class="logo-controls"><label>الحجم <input id="logoSize" type="range" min="10" max="60" value="28"></label><label>الشفافية <input id="logoOpacity" type="range" min="20" max="100" value="90"></label></div>
+        </article>
+        <article class="panel split-panel">
+          <div class="panel-title"><span>REEL ENGINE</span><span>التقسيم</span></div>
+          <div class="split-options" data-group="split">
+            <button class="option active" data-value="60">60 ثانية</button>
+            <button class="option" data-value="90">90 ثانية</button>
+            <button class="option" data-value="120">120 ثانية</button>
+            <button class="option" data-value="custom">مخصص</button>
+          </div>
+          <div class="smart-row"><span><b>Smart Split</b><small>تقسيم منظم مع الحفاظ على الحدود المناسبة</small></span><label class="switch"><input id="smartSplit" type="checkbox" checked><i></i></label></div>
+        </article>
+      </div>
+      <div class="process-bar">
+        <div><span>READY TO PROCESS</span><small>سيتم إنشاء ملفات مستقلة + ZIP</small></div>
+        <button class="primary" id="processBtn">إنشاء Reels <span>→</span></button>
+      </div>
+    </section>
+
+    <section class="result hidden" id="result">
+      <div class="result-head"><div><span class="section-kicker">03 / OUTPUT</span><h2>Reels جاهزة</h2></div><span class="done">✓ COMPLETE</span></div>
+      <div class="progress"><i id="progressBar"></i></div>
+      <div class="reels-list" id="reelsList"></div>
+      <button class="primary full" id="downloadAll">تحميل الكل كـ ZIP</button>
+    </section>
+
+    <section id="features" class="features">
+      <div class="section-title"><span class="section-kicker">BUILT FOR CREATORS</span><h2>كل ما تحتاجه في مكان واحد.</h2></div>
+      <div class="feature-grid">
+        <article><b>01</b><h3>Auto Subtitles</h3><p>ترجمة واستخراج الكلام مع إعدادات واضحة للخط والمكان.</p></article>
+        <article><b>02</b><h3>Smart Branding</h3><p>إضافة شعارك والتحكم بالحجم والشفافية والموقع على المحتوى المصرّح به.</p></article>
+        <article><b>03</b><h3>Reel Engine</h3><p>تقسيم الفيديو إلى أجزاء مستقلة مع ترقيم وتنظيم تلقائي.</p></article>
+        <article><b>04</b><h3>Batch Output</h3><p>إخراج كل الأجزاء منفردة أو في ملف ZIP واحد.</p></article>
+      </div>
+    </section>
+
+    <section id="workflow" class="workflow">
+      <div><span class="section-kicker">SIMPLE FLOW</span><h2>رابط واحد.<br>معالجة واحدة.<br><em>نتيجة منظمة.</em></h2></div>
+      <div class="steps"><div><span>01</span><p>أدخل المصدر</p></div><div><span>02</span><p>اختر الجودة والترجمة</p></div><div><span>03</span><p>أضف الـBranding</p></div><div><span>04</span><p>قسّم وأنشئ Reels</p></div></div>
+    </section>
+  </main>
+  <footer><strong>BiliReels</strong><span>Video → Reels Studio</span><small>© 2026 BiliReels</small></footer>
+  <script src="app.js"></script>
+</body>
+</html>
