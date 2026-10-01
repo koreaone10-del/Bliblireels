@@ -1,131 +1,86 @@
-const ENGINE_URL = "https://your-backend-engine-url.onrender.com"; // ضع رابط خادم Render هنا
-
 const analyzeBtn = document.getElementById('analyzeBtn');
 const urlInput = document.getElementById('videoUrl');
 const videoCard = document.getElementById('videoCard');
 const progressSection = document.getElementById('progressSection');
+const startDownloadBtn = document.getElementById('startDownloadBtn');
 
-let currentUrl = '';
-let pollInFlight = false;
+let currentVideoData = null;
 
-// المرحلة 1: جلب البيانات السريعة
+// المرحلة 1: جلب البيانات وعرضها
 analyzeBtn.addEventListener('click', async () => {
-    currentUrl = urlInput.value.trim();
-    if (!currentUrl) return;
+    const url = urlInput.value.trim();
+    if (!url) return;
 
     analyzeBtn.disabled = true;
-    analyzeBtn.innerText = "جاري الاتصال بـ BiliBili..."; // إزالة النسب الوهمية
+    analyzeBtn.innerText = "جاري الاتصال...";
     
     videoCard.style.display = 'none';
-    progressSection.style.display = 'none';
+    if(progressSection) progressSection.style.display = 'none';
 
     try {
-        const res = await fetch(`${ENGINE_URL}/api/metadata?url=${encodeURIComponent(currentUrl)}`);
+        // الاتصال بدالة Vercel الداخلية مباشرة
+        const res = await fetch(`/api/metadata?url=${encodeURIComponent(url)}`);
         const data = await res.json();
 
-        if (data.error) throw new Error(data.error);
+        if (!res.ok || data.error) {
+            throw new Error(data.error || "فشل في جلب البيانات.");
+        }
+
+        currentVideoData = data.video;
 
         // تعبئة بطاقة الفيديو
-        document.getElementById('videoThumbnail').src = data.video.thumbnail;
-        document.getElementById('videoTitle').innerText = data.video.title;
-        document.getElementById('videoAuthor').innerText = `👤 ${data.video.author.name}`;
-        document.getElementById('videoDuration').innerText = `⏱ ${data.video.duration} ثانية`;
-        document.getElementById('videoViews').innerText = `👁 ${data.video.stats.views}`;
+        document.getElementById('videoThumbnail').src = currentVideoData.thumbnail;
+        document.getElementById('videoTitle').innerText = currentVideoData.title;
+        document.getElementById('videoAuthor').innerText = `👤 ${currentVideoData.author}`;
+        
+        // تحويل الثواني إلى دقائق
+        const minutes = Math.floor(currentVideoData.duration / 60);
+        const seconds = currentVideoData.duration % 60;
+        document.getElementById('videoDuration').innerText = `⏱ ${minutes}:${seconds < 10 ? '0'+seconds : seconds}`;
+        
+        document.getElementById('videoViews').innerText = `👁 ${currentVideoData.views}`;
 
         videoCard.style.display = 'block';
+        
+        // إظهار قسم الإعدادات إذا كان مخفياً
+        const workspace = document.getElementById('workspace');
+        if(workspace) workspace.style.display = 'block';
+
     } catch (error) {
-        alert("حدث خطأ أثناء جلب تفاصيل الفيديو. يرجى التأكد من الرابط.");
+        alert(error.message);
     } finally {
         analyzeBtn.disabled = false;
-        analyzeBtn.innerText = "تحليل الرابط";
+        analyzeBtn.innerText = "تحليل";
     }
 });
 
-// المرحلة 2: بدء التحميل
-document.getElementById('startDownloadBtn').addEventListener('click', async () => {
-    videoCard.style.display = 'none';
-    progressSection.style.display = 'block';
-    
-    try {
-        const res = await fetch(`${ENGINE_URL}/api/download`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: currentUrl })
-        });
-        const data = await res.json();
-        
-        if (data.jobId) {
-            poll(data.jobId);
-        }
-    } catch (error) {
-        alert("فشل في بدء التحميل.");
-    }
-});
-
-// المرحلة 3: التتبع الحقيقي للتقدم
-async function poll(jobId) {
-    if (pollInFlight) return;
-    pollInFlight = true;
-
-    try {
-        const res = await fetch(`${ENGINE_URL}/api/jobs/${jobId}`);
-        const job = await res.json();
-
-        updateProgressUI(job);
-
-        if (job.status === 'completed') {
-            showResults(job.results);
-            pollInFlight = false;
-            return; // إنهاء المراقبة
-        } else if (job.status === 'failed') {
-            document.getElementById('progressStatusText').innerText = "فشلت العملية!";
-            pollInFlight = false;
+// المرحلة 2: التحميل المباشر
+if (startDownloadBtn) {
+    startDownloadBtn.addEventListener('click', () => {
+        if (!currentVideoData || !currentVideoData.directUrl) {
+            alert("رابط التحميل غير متوفر لهذا الفيديو.");
             return;
         }
-    } catch (error) {
-        console.error("Polling error", error);
-    } finally {
-        pollInFlight = false;
-    }
 
-    // استمرار التتبع كل 1.5 ثانية
-    setTimeout(() => poll(jobId), 1500);
-}
+        const originalText = startDownloadBtn.innerHTML;
+        startDownloadBtn.innerHTML = "جاري التحضير... ⏳";
+        startDownloadBtn.disabled = true;
 
-function updateProgressUI(job) {
-    const statusText = document.getElementById('progressStatusText');
-    const bar = document.getElementById('progressBarFill');
-    const percentText = document.getElementById('progressPercentage');
+        // توجيه المتصفح إلى دالة التحميل الخاصة بنا لتجاوز الحماية
+        const downloadProxyUrl = `/api/download?url=${encodeURIComponent(currentVideoData.directUrl)}&title=${encodeURIComponent(currentVideoData.title)}`;
+        
+        // إنشاء رابط مخفي والضغط عليه لبدء التحميل الفعلي
+        const a = document.createElement('a');
+        a.href = downloadProxyUrl;
+        a.download = "";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
 
-    if (job.status === 'downloading') {
-        statusText.innerText = "جاري تحميل المصدر...";
-        bar.style.width = `${job.progress}%`;
-        percentText.innerText = `${job.progress}%`;
-    } else if (job.status === 'processing') {
-        statusText.innerText = "جاري تحويل المقاطع (FFmpeg) وتهيئتها كـ Reels...";
-        bar.style.width = "100%";
-        bar.classList.add('bg-orange-500'); // تغيير اللون أثناء المعالجة
-        percentText.innerText = "100%";
-    }
-}
-
-function showResults(results) {
-    progressSection.style.display = 'none';
-    const resultsSection = document.getElementById('resultsSection');
-    const list = document.getElementById('reelsList');
-    list.innerHTML = '';
-
-    results.forEach(reel => {
-        const div = document.createElement('div');
-        div.className = "p-4 border rounded shadow-sm flex flex-col items-center bg-white";
-        div.innerHTML = `
-            <span class="font-bold mb-3">${reel.title}</span>
-            <a href="${reel.url}" target="_blank" download class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm w-full text-center">
-                تحميل المقطع
-            </a>
-        `;
-        list.appendChild(div);
+        // إعادة الزر لحالته بعد ثوانٍ قليلة
+        setTimeout(() => {
+            startDownloadBtn.innerHTML = originalText;
+            startDownloadBtn.disabled = false;
+        }, 3000);
     });
-
-    resultsSection.style.display = 'block';
 }
