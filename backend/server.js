@@ -15,237 +15,561 @@ app.use(cors());
 app.use(express.json({ limit: "256kb" }));
 
 const PORT = process.env.PORT || 8080;
+
 const jobs = new Map();
+
 const TTL = Number(
   process.env.JOB_TTL_MS || 3600000
 );
 
-const id = () => crypto.randomUUID();
+const makeId = () =>
+  crypto.randomUUID();
 
-const clean = (s) =>
-  String(s || "file")
-    .replace(/[^\w.-]+/g, "_")
-    .slice(0, 90);
+const send = (
+  res,
+  data,
+  status = 200
+) => {
+  return res
+    .status(status)
+    .json(data);
+};
 
-const send = (res, data, status = 200) =>
-  res.status(status).json(data);
 
+/* =========================================================
+   BiliBili URL validation
+   ========================================================= */
 
-/*
-|--------------------------------------------------------------------------
-| BiliBili URL validation
-|--------------------------------------------------------------------------
-|
-| Supported:
-|   - bilibili.com
-|   - *.bilibili.com
-|   - bilibili.tv
-|   - *.bilibili.tv
-|   - b23.tv
-|   - bili.im
-|
-*/
+function isSupportedBiliHost(hostname) {
+  const h =
+    String(hostname || "")
+      .toLowerCase()
+      .replace(/\.$/, "");
 
-function validBili(url) {
-  let u;
-
-  try {
-    u = new URL(url);
-  } catch {
-    throw new Error(
-      "Invalid BiliBili URL."
-    );
-  }
-
-  const h = u.hostname.toLowerCase();
-
-  const isSupported =
+  return (
     h === "b23.tv" ||
     h === "bili.im" ||
     h === "bilibili.com" ||
     h.endsWith(".bilibili.com") ||
     h === "bilibili.tv" ||
-    h.endsWith(".bilibili.tv");
+    h.endsWith(".bilibili.tv")
+  );
+}
 
-  if (!isSupported) {
+
+function validateBiliUrl(value) {
+  if (!value) {
+    throw new Error(
+      "Missing BiliBili URL."
+    );
+  }
+
+  let url;
+
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(
+      "Invalid URL."
+    );
+  }
+
+  if (
+    url.protocol !== "http:" &&
+    url.protocol !== "https:"
+  ) {
+    throw new Error(
+      "Only HTTP and HTTPS URLs are supported."
+    );
+  }
+
+  if (
+    !isSupportedBiliHost(
+      url.hostname
+    )
+  ) {
     throw new Error(
       "Only BiliBili URLs are supported."
     );
   }
 
-  return true;
+  return url;
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| Health
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   Resolve short BiliBili links
+   ========================================================= */
+
+async function resolveBiliUrl(inputUrl) {
+  const parsed =
+    validateBiliUrl(inputUrl);
+
+  const host =
+    parsed.hostname
+      .toLowerCase();
+
+  /*
+   * bili.im is a short sharing URL.
+   * Resolve it before sending it to yt-dlp.
+   */
+  if (
+    host === "bili.im" ||
+    host === "b23.tv"
+  ) {
+    try {
+      const response =
+        await fetch(
+          inputUrl,
+          {
+            method: "GET",
+            redirect: "follow",
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36",
+              "Accept":
+                "text/html,application/xhtml+xml"
+            },
+            signal:
+              AbortSignal.timeout(15000)
+          }
+        );
+
+      const finalUrl =
+        response.url;
+
+      if (
+        finalUrl &&
+        isSupportedBiliHost(
+          new URL(finalUrl).hostname
+        )
+      ) {
+        return finalUrl;
+      }
+    } catch (error) {
+      /*
+       * Do not fail immediately.
+       * yt-dlp may be able to resolve the short URL itself.
+       */
+      console.warn(
+        "[BiliReels] Short URL resolution failed:",
+        error.message
+      );
+    }
+  }
+
+  return inputUrl;
+}
+
+
+/* =========================================================
+   yt-dlp helper
+   ========================================================= */
+
+async function runYtDlp(
+  args,
+  options = {}
+) {
+  const baseArgs = [
+    "--no-warnings",
+    "--no-playlist",
+    "--force-ipv4"
+  ];
+
+  return exec(
+    "yt-dlp",
+    [
+      ...baseArgs,
+      ...args
+    ],
+    {
+      timeout:
+        options.timeout ||
+        120000,
+
+      maxBuffer:
+        options.maxBuffer ||
+        12e6,
+
+      env: {
+        ...process.env
+      }
+    }
+  );
+}
+
+
+/* =========================================================
+   Health
+   ========================================================= */
 
 app.get(
   "/health",
   (req, res) => {
     send(res, {
       ok: true,
-      service: "BiliReels Video Engine"
+      service:
+        "BiliReels Video Engine",
+      timestamp:
+        new Date().toISOString()
     });
   }
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| Analyze BiliBili video
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   Analyze
+   ========================================================= */
 
 app.post(
   "/analyze",
   async (req, res) => {
-    try {
-      const url = req.body?.url;
+    const started =
+      Date.now();
 
-      if (!url) {
-        throw new Error(
-          "Missing url"
+    try {
+      const originalUrl =
+        String(
+          req.body?.url || ""
+        ).trim();
+
+      if (!originalUrl) {
+        return send(
+          res,
+          {
+            error:
+              "Missing url"
+          },
+          400
         );
       }
 
-      validBili(url);
+      validateBiliUrl(
+        originalUrl
+      );
 
-      const { stdout } =
-        await exec(
-          "yt-dlp",
-          [
-            "--dump-single-json",
-            "--skip-download",
-            "--no-warnings",
-            "--no-playlist",
-            url
-          ],
-          {
-            timeout: 90000,
-            maxBuffer: 8e6
-          }
+      console.log(
+        "[BiliReels] Analyze request:",
+        originalUrl
+      );
+
+      const resolvedUrl =
+        await resolveBiliUrl(
+          originalUrl
         );
 
-      const data =
-        JSON.parse(stdout);
+      console.log(
+        "[BiliReels] Resolved URL:",
+        resolvedUrl
+      );
 
-      send(res, {
-        id: data.id,
+      /*
+       * BiliBili.tv uses the BiliIntl extractor.
+       * The normal webpage can require the BiliBili referer.
+       */
+      const args = [
+        "--dump-single-json",
+        "--skip-download",
+
+        "--referer",
+        "https://www.bilibili.tv/",
+
+        "--add-header",
+        "Origin:https://www.bilibili.tv",
+
+        "--add-header",
+        "Accept-Language:en-US,en;q=0.9",
+
+        resolvedUrl
+      ];
+
+      let stdout;
+      let stderr = "";
+
+      try {
+        const result =
+          await runYtDlp(
+            args,
+            {
+              timeout: 120000,
+              maxBuffer: 16e6
+            }
+          );
+
+        stdout =
+          result.stdout;
+
+        stderr =
+          result.stderr || "";
+      } catch (error) {
+        const details = [
+          error.message,
+          error.stderr,
+          error.stdout
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        console.error(
+          "[BiliReels] yt-dlp ANALYZE failed:\n",
+          details
+        );
+
+        return send(
+          res,
+          {
+            error:
+              "yt-dlp failed while analyzing the BiliBili video.",
+
+            details:
+              details.slice(
+                0,
+                5000
+              ),
+
+            originalUrl,
+
+            resolvedUrl
+          },
+          502
+        );
+      }
+
+      let info;
+
+      try {
+        info =
+          JSON.parse(
+            stdout
+          );
+      } catch {
+        console.error(
+          "[BiliReels] yt-dlp returned invalid JSON:",
+          stdout?.slice(0, 3000)
+        );
+
+        return send(
+          res,
+          {
+            error:
+              "yt-dlp returned invalid metadata.",
+
+            details:
+              stderr ||
+              stdout?.slice(
+                0,
+                5000
+              ),
+
+            originalUrl,
+
+            resolvedUrl
+          },
+          502
+        );
+      }
+
+      const response = {
+        id:
+          info.id || null,
 
         bvid:
-          data.id?.startsWith("BV")
-            ? data.id
-            : null,
+          info.bvid ||
+          (
+            typeof info.id === "string" &&
+            info.id.startsWith("BV")
+              ? info.id
+              : null
+          ),
 
         title:
-          data.title ||
+          info.title ||
           "BiliBili Video",
 
         duration:
-          Number(data.duration) || 0,
+          Number(
+            info.duration
+          ) || 0,
 
         thumbnail:
-          data.thumbnail || null,
+          info.thumbnail ||
+          null,
 
         author:
-          data.uploader ||
-          data.channel ||
+          info.uploader ||
+          info.channel ||
+          info.creator ||
           "",
 
         webpageUrl:
-          data.webpage_url ||
-          url
-      });
+          info.webpage_url ||
+          resolvedUrl,
+
+        sourceUrl:
+          resolvedUrl,
+
+        originalUrl,
+
+        extractor:
+          info.extractor ||
+          null,
+
+        extractorKey:
+          info.extractor_key ||
+          null
+      };
+
+      console.log(
+        `[BiliReels] Analyze OK in ${Date.now() - started}ms`,
+        {
+          id: response.id,
+          title: response.title,
+          extractor:
+            response.extractor
+        }
+      );
+
+      return send(
+        res,
+        response,
+        200
+      );
     } catch (error) {
-      send(
+      console.error(
+        "[BiliReels] Analyze unexpected error:",
+        error
+      );
+
+      return send(
         res,
         {
           error:
             error.message ||
             "Analyze failed"
         },
-        502
+        500
       );
     }
   }
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| Create processing job
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   Create processing job
+   ========================================================= */
 
 app.post(
   "/jobs",
   async (req, res) => {
     try {
-      const p = req.body || {};
+      const payload =
+        req.body || {};
 
-      validBili(
-        p.sourceUrl
+      const sourceUrl =
+        String(
+          payload.sourceUrl || ""
+        ).trim();
+
+      if (!sourceUrl) {
+        throw new Error(
+          "Missing sourceUrl"
+        );
+      }
+
+      validateBiliUrl(
+        sourceUrl
       );
 
-      const jobId = id();
+      const jobId =
+        makeId();
 
       const dir =
         await fs.mkdtemp(
           path.join(
             os.tmpdir(),
-            "br-"
+            "blibireels-"
           )
         );
 
+      const job = {
+        jobId,
+
+        status:
+          "queued",
+
+        progress:
+          0,
+
+        message:
+          "Queued",
+
+        error:
+          null,
+
+        dir,
+
+        reels:
+          [],
+
+        zipUrl:
+          null,
+
+        createdAt:
+          Date.now()
+      };
+
       jobs.set(
         jobId,
-        {
-          jobId,
-          status: "queued",
-          progress: 0,
-          message: "Queued",
-          dir,
-          reels: [],
-          zipUrl: null,
-          createdAt: Date.now()
+        job
+      );
+
+      runJob(
+        jobId,
+        payload
+      ).catch(
+        (error) => {
+          const current =
+            jobs.get(jobId);
+
+          if (!current) {
+            return;
+          }
+
+          current.status =
+            "failed";
+
+          current.error =
+            error.message ||
+            "Processing failed";
+
+          current.message =
+            current.error;
+
+          console.error(
+            `[BiliReels] Job ${jobId} failed:`,
+            error
+          );
         }
       );
 
-      run(
-        jobId,
-        p
-      ).catch((error) => {
-        const j =
-          jobs.get(jobId);
-
-        if (j) {
-          j.status = "failed";
-          j.error =
-            error.message;
-          j.message =
-            error.message;
-        }
-      });
-
-      send(
+      return send(
         res,
         {
           jobId,
-          status: "queued",
-          message: "Job queued"
+          status:
+            "queued",
+          message:
+            "Job queued"
         },
         202
       );
     } catch (error) {
-      send(
+      return send(
         res,
         {
           error:
-            error.message
+            error.message ||
+            "Unable to create job"
         },
         400
       );
@@ -254,21 +578,19 @@ app.post(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| Job status
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   Job status
+   ========================================================= */
 
 app.get(
   "/jobs/:id",
   (req, res) => {
-    const j =
+    const job =
       jobs.get(
         req.params.id
       );
 
-    if (!j) {
+    if (!job) {
       return send(
         res,
         {
@@ -279,34 +601,48 @@ app.get(
       );
     }
 
-    send(res, {
-      jobId: j.jobId,
-      status: j.status,
-      progress: j.progress,
-      message: j.message,
-      error: j.error || null,
-      reels: j.reels,
-      zipUrl: j.zipUrl
-    });
+    return send(
+      res,
+      {
+        jobId:
+          job.jobId,
+
+        status:
+          job.status,
+
+        progress:
+          job.progress,
+
+        message:
+          job.message,
+
+        error:
+          job.error,
+
+        reels:
+          job.reels,
+
+        zipUrl:
+          job.zipUrl
+      }
+    );
   }
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| Serve generated files
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   Serve generated files
+   ========================================================= */
 
 app.get(
   "/files/:id/:name",
   async (req, res) => {
-    const j =
+    const job =
       jobs.get(
         req.params.id
       );
 
-    if (!j) {
+    if (!job) {
       return res
         .status(404)
         .end();
@@ -326,15 +662,17 @@ app.get(
         .end();
     }
 
-    const file =
+    const filePath =
       path.join(
-        j.dir,
+        job.dir,
         name
       );
 
     try {
       const stat =
-        await fs.stat(file);
+        await fs.stat(
+          filePath
+        );
 
       res.setHeader(
         "Content-Type",
@@ -353,13 +691,17 @@ app.get(
         `attachment; filename="${name}"`
       );
 
-      (
-        await import("node:fs")
-      )
-        .createReadStream(file)
-        .pipe(res);
+      const {
+        createReadStream
+      } = await import(
+        "node:fs"
+      );
+
+      createReadStream(
+        filePath
+      ).pipe(res);
     } catch {
-      res
+      return res
         .status(404)
         .end();
     }
@@ -367,138 +709,187 @@ app.get(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| Video processing
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   Processing
+   ========================================================= */
 
-async function run(jobId, p) {
-  const j =
+async function runJob(
+  jobId,
+  payload
+) {
+  const job =
     jobs.get(jobId);
 
-  if (!j) {
+  if (!job) {
     throw new Error(
       "Job not found"
     );
   }
 
-  j.status = "processing";
-  j.message =
-    "Downloading from BiliBili…";
+  job.status =
+    "processing";
 
+  job.progress =
+    0.02;
 
-  /*
-  |--------------------------------------------------------------------------
-  | Download source
-  |--------------------------------------------------------------------------
-  */
+  job.message =
+    "Resolving BiliBili URL…";
 
-  const src =
+  const sourceUrl =
+    await resolveBiliUrl(
+      payload.sourceUrl
+    );
+
+  job.message =
+    "Downloading BiliBili video…";
+
+  job.progress =
+    0.05;
+
+  const outputTemplate =
     path.join(
-      j.dir,
+      job.dir,
       "source.%(ext)s"
     );
 
-  await exec(
-    "yt-dlp",
-    [
-      "--no-playlist",
+  const quality =
+    payload.quality ===
+    "1080p"
+      ? "1080p"
+      : payload.quality ===
+        "480p"
+        ? "480p"
+        : "720p";
 
-      "-f",
-      "bv*+ba/b",
+  const format =
+    quality === "1080p"
+      ? "bv*[height<=1080]+ba/b"
+      : quality === "480p"
+        ? "bv*[height<=480]+ba/b"
+        : "bv*[height<=720]+ba/b";
 
-      "--merge-output-format",
-      "mp4",
+  try {
+    await runYtDlp(
+      [
+        "-f",
+        format,
 
-      "-o",
-      src,
+        "--merge-output-format",
+        "mp4",
 
-      p.sourceUrl
-    ],
-    {
-      timeout:
-        25 * 60 * 1000,
+        "--referer",
+        "https://www.bilibili.tv/",
 
-      maxBuffer:
-        4e6
-    }
-  );
+        "--add-header",
+        "Origin:https://www.bilibili.tv",
 
+        "--add-header",
+        "Accept-Language:en-US,en;q=0.9",
 
-  /*
-  |--------------------------------------------------------------------------
-  | Find downloaded MP4
-  |--------------------------------------------------------------------------
-  */
+        "-o",
+        outputTemplate,
 
-  const fsys =
+        sourceUrl
+      ],
+      {
+        timeout:
+          30 * 60 * 1000,
+        maxBuffer:
+          8e6
+      }
+    );
+  } catch (error) {
+    const details = [
+      error.message,
+      error.stderr,
+      error.stdout
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    console.error(
+      `[BiliReels] Job ${jobId} download failed:\n`,
+      details
+    );
+
+    throw new Error(
+      `BiliBili download failed: ${details.slice(
+        0,
+        4000
+      )}`
+    );
+  }
+
+  const files =
     await fs.readdir(
-      j.dir
+      job.dir
     );
 
   const source =
-    fsys.find(
-      (x) =>
-        x.startsWith("source.") &&
-        x.endsWith(".mp4")
+    files.find(
+      (file) =>
+        file.startsWith(
+          "source."
+        ) &&
+        file.endsWith(
+          ".mp4"
+        )
     );
 
   if (!source) {
     throw new Error(
-      "Download did not produce MP4"
+      "Download completed but no MP4 file was produced."
     );
   }
 
+  job.progress =
+    0.25;
 
-  /*
-  |--------------------------------------------------------------------------
-  | Encoding
-  |--------------------------------------------------------------------------
-  */
-
-  j.progress = 0.25;
-
-  j.message =
+  job.message =
     "Encoding 9:16 Reels…";
 
-
-  let q = "720p";
-
-  if (p.quality === "1080p") {
-    q = "1080p";
-  } else if (
-    p.quality === "480p"
-  ) {
-    q = "480p";
-  }
-
-
-  let w = 720;
-  let h = 1280;
-
-  if (q === "1080p") {
-    w = 1080;
-    h = 1920;
-  }
-
-  if (q === "480p") {
-    w = 480;
-    h = 854;
-  }
-
-
-  const seg =
+  const seconds =
     Math.max(
       10,
       Math.min(
         600,
         Number(
-          p.split?.duration
+          payload.split?.duration
         ) || 30
       )
     );
 
+  let width =
+    720;
+
+  let height =
+    1280;
+
+  if (
+    quality === "1080p"
+  ) {
+    width =
+      1080;
+
+    height =
+      1920;
+  }
+
+  if (
+    quality === "480p"
+  ) {
+    width =
+      480;
+
+    height =
+      854;
+  }
+
+  const sourcePath =
+    path.join(
+      job.dir,
+      source
+    );
 
   await exec(
     "ffmpeg",
@@ -506,13 +897,10 @@ async function run(jobId, p) {
       "-y",
 
       "-i",
-      path.join(
-        j.dir,
-        source
-      ),
+      sourcePath,
 
       "-vf",
-      `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`,
+      `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`,
 
       "-map",
       "0:v:0",
@@ -527,9 +915,9 @@ async function run(jobId, p) {
       "veryfast",
 
       "-crf",
-      q === "1080p"
+      quality === "1080p"
         ? "20"
-        : q === "720p"
+        : quality === "720p"
           ? "21"
           : "23",
 
@@ -543,7 +931,7 @@ async function run(jobId, p) {
       "segment",
 
       "-segment_time",
-      String(seg),
+      String(seconds),
 
       "-reset_timestamps",
       "1",
@@ -551,65 +939,50 @@ async function run(jobId, p) {
       "-segment_format",
       "mp4",
 
-      "-movflags",
-      "+faststart",
-
       path.join(
-        j.dir,
+        job.dir,
         "reel_%03d.mp4"
       )
     ],
     {
       timeout:
-        35 * 60 * 1000,
+        40 * 60 * 1000,
 
       maxBuffer:
-        4e6
+        8e6
     }
   );
 
-
-  /*
-  |--------------------------------------------------------------------------
-  | Find generated Reels
-  |--------------------------------------------------------------------------
-  */
-
-  const outs =
+  const generated =
     (
       await fs.readdir(
-        j.dir
+        job.dir
       )
     )
       .filter(
-        (x) =>
-          /^reel_\d+\.mp4$/.test(x)
+        (file) =>
+          /^reel_\d+\.mp4$/.test(
+            file
+          )
       )
       .sort();
 
-
-  if (!outs.length) {
+  if (!generated.length) {
     throw new Error(
-      "FFmpeg produced no clips"
+      "FFmpeg produced no Reel files."
     );
   }
 
+  const publicBase =
+    String(
+      process.env.PUBLIC_BASE_URL ||
+      ""
+    )
+      .replace(/\/$/, "");
 
-  /*
-  |--------------------------------------------------------------------------
-  | Public URLs
-  |--------------------------------------------------------------------------
-  */
-
-  const base =
-    process.env.PUBLIC_BASE_URL
-      ?.replace(/\/$/, "") ||
-    "";
-
-
-  j.reels =
-    outs.map(
-      (name, index) => ({
+  job.reels =
+    generated.map(
+      (file, index) => ({
         filename:
           `BiliReels_Reel_${String(
             index + 1
@@ -618,39 +991,30 @@ async function run(jobId, p) {
             "0"
           )}.mp4`,
 
-        duration: seg,
+        quality,
 
-        quality: q,
+        width,
 
-        width: w,
+        height,
 
-        height: h,
+        duration:
+          seconds,
 
-        url: base
-          ? `${base}/files/${jobId}/${name}`
-          : null
+        url:
+          publicBase
+            ? `${publicBase}/files/${jobId}/${file}`
+            : null
       })
     );
 
+  job.progress =
+    0.95;
 
-  /*
-  |--------------------------------------------------------------------------
-  | ZIP
-  |--------------------------------------------------------------------------
-  */
-
-  j.progress = 1;
-
-  j.status =
-    "completed";
-
-  j.message =
-    `Created ${outs.length} Reel(s).`;
-
+  job.message =
+    "Creating ZIP…";
 
   const zipName =
     "BiliReels_Reels.zip";
-
 
   await exec(
     "zip",
@@ -658,32 +1022,46 @@ async function run(jobId, p) {
       "-j",
 
       path.join(
-        j.dir,
+        job.dir,
         zipName
       ),
 
-      ...outs.map(
-        (name) =>
+      ...generated.map(
+        (file) =>
           path.join(
-            j.dir,
-            name
+            job.dir,
+            file
           )
       )
-    ]
+    ],
+    {
+      timeout:
+        120000,
+
+      maxBuffer:
+        4e6
+    }
   );
 
+  job.zipUrl =
+    publicBase
+      ? `${publicBase}/files/${jobId}/${zipName}`
+      : null;
 
-  j.zipUrl = base
-    ? `${base}/files/${jobId}/${zipName}`
-    : null;
+  job.progress =
+    1;
+
+  job.status =
+    "completed";
+
+  job.message =
+    `Created ${generated.length} Reel(s).`;
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| Cleanup old jobs
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   Cleanup
+   ========================================================= */
 
 setInterval(
   async () => {
@@ -691,24 +1069,29 @@ setInterval(
       Date.now();
 
     for (
-      const [key, job]
+      const [jobId, job]
       of jobs
     ) {
       if (
-        now - job.createdAt >
+        now -
+          job.createdAt >
         TTL
       ) {
         await fs.rm(
           job.dir,
           {
-            recursive: true,
-            force: true
+            recursive:
+              true,
+            force:
+              true
           }
         ).catch(
           () => {}
         );
 
-        jobs.delete(key);
+        jobs.delete(
+          jobId
+        );
       }
     }
   },
@@ -716,17 +1099,15 @@ setInterval(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| Start server
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   Start
+   ========================================================= */
 
 app.listen(
   PORT,
   () => {
     console.log(
-      `BiliReels engine on ${PORT}`
+      `BiliReels Video Engine listening on port ${PORT}`
     );
   }
 );
