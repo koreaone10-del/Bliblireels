@@ -1,525 +1,486 @@
-const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const API={analyze:'/api/analyze',process:'/api/process'};
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
 
-const ui={
-  ar:['العربية','rtl'],
-  en:['English','ltr'],
-  fr:['Français','ltr'],
-  es:['Español','ltr'],
-  de:['Deutsch','ltr'],
-  tr:['Türkçe','ltr'],
-  pt:['Português','ltr'],
-  it:['Italiano','ltr'],
-  zh:['中文','ltr'],
-  ja:['日本語','ltr'],
-  ko:['한국어','ltr'],
-  ru:['Русский','ltr']
+const API = {
+  analyze: '/api/analyze',
+  process: '/api/process'
 };
 
-const sub={
-  ar:'العربية',
-  en:'English',
-  fr:'Français',
-  es:'Español',
-  de:'Deutsch',
-  tr:'Türkçe',
-  pt:'Português',
-  it:'Italiano',
-  zh:'中文',
-  ja:'日本語',
-  ko:'한국어',
-  ru:'Русский'
+const state = {
+  sourceUrl: '',
+  source: null,
+  quality: '720p',
+  duration: 30,
+  smart: true,
+  subs: true,
+  subLang: 'ar',
+  job: null,
+  pollTimer: null,
+  pollStartedAt: 0
 };
 
-const dict={
-  ar:{
-    features:'المميزات',
-    workflow:'كيف يعمل',
-    studio:'الاستوديو',
-    heroTitle:'حوّل رابط BiliBili<br><em>إلى Reels جاهزة.</em>',
-    heroDesc:'ألصق الرابط، اختر التقسيم والترجمة والـBranding، ثم ابدأ المعالجة من المصدر مباشرة.',
-    start:'ابدأ الآن ↓',
-    how:'شاهد الطريقة',
-    fast:'سريع',
-    organized:'منظم',
-    sourceTitle:'رابط BiliBili',
-    analyze:'تحليل',
-    sourceHint:'لا يوجد رفع فيديو من الهاتف أو الكمبيوتر.\nالمصدر هو رابط BiliBili فقط.',
-    requestTitle:'هندسة الطلب',
-    quality:'الجودة',
-    subtitles:'الترجمة',
-    enableSubs:'إنشاء Subtitles',
-    split:'التقسيم',
-    custom:'مخصص',
-    smart:'دع الذكاء الاصطناعي يقترح المقاطع المهمة.',
-    create:'إنشاء Reels →',
-    result:'النتيجة',
-    zip:'تحميل الكل كـ ZIP',
-    f1:'لا Upload للفيديو. الصق الرابط فقط.',
-    f2:'تقسيم ثابت أو اختيار ذكي للمقاطع.',
-    f3:'ترجمة واختيار لغة الإخراج.',
-    f4:'Logo وإعدادات إخراج منظمة.'
-  },
+function toast(message) {
+  const el = $('#toast');
+  if (!el) return;
 
-  en:{
-    features:'Features',
-    workflow:'How it works',
-    studio:'Studio',
-    heroTitle:'Turn a BiliBili URL<br><em>into ready Reels.</em>',
-    heroDesc:'Paste the URL, choose splitting, subtitles and branding, then process directly from the source.',
-    start:'Start now ↓',
-    how:'How it works',
-    fast:'Fast',
-    organized:'Organized',
-    sourceTitle:'BiliBili URL',
-    analyze:'Analyze',
-    sourceHint:'No video upload from your phone or computer.\nThe source is a BiliBili URL.',
-    requestTitle:'Request Designer',
-    quality:'Quality',
-    subtitles:'Subtitles',
-    enableSubs:'Create subtitles',
-    split:'Splitting',
-    custom:'Custom',
-    smart:'Let AI suggest important clips.',
-    create:'Create Reels →',
-    result:'Results',
-    zip:'Download all as ZIP',
-    f1:'No video upload. Paste the URL.',
-    f2:'Fixed splitting or AI clip selection.',
-    f3:'Translation and output language.',
-    f4:'Logo and organized output settings.'
-  },
+  el.textContent = message;
+  el.classList.add('show');
 
-  fr:{
-    features:'Fonctions',
-    workflow:'Comment ça marche',
-    studio:'Studio',
-    heroTitle:'Transformez une URL BiliBili<br><em>en Reels prêtes.</em>',
-    heroDesc:'Collez l’URL, choisissez le découpage, les sous-titres et le branding, puis lancez le traitement.',
-    start:'Commencer ↓',
-    how:'Comment ça marche',
-    fast:'Rapide',
-    organized:'Organisé',
-    sourceTitle:'URL BiliBili',
-    analyze:'Analyser',
-    sourceHint:'Aucun upload vidéo.\nLa source est une URL BiliBili.',
-    requestTitle:'Concepteur de requête',
-    quality:'Qualité',
-    subtitles:'Sous-titres',
-    enableSubs:'Créer les sous-titres',
-    split:'Découpage',
-    custom:'Personnalisé',
-    smart:'Laissez l’IA proposer les meilleurs extraits.',
-    create:'Créer les Reels →',
-    result:'Résultats',
-    zip:'Télécharger tout en ZIP',
-    f1:'Pas d’upload vidéo. Collez l’URL.',
-    f2:'Découpage fixe ou sélection IA.',
-    f3:'Traduction et langue de sortie.',
-    f4:'Logo et réglages de sortie.'
+  clearTimeout(window.__brToastTimer);
+  window.__brToastTimer = setTimeout(() => {
+    el.classList.remove('show');
+  }, 3200);
+}
+
+function setStatus(element, text, type = 'ready') {
+  if (!element) return;
+  element.textContent = text;
+  element.className = `status ${type}`;
+}
+
+function formatDuration(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) return '—';
+
+  const total = Math.round(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
-};
 
-let lang=localStorage.getItem('br-ui-lang');
-
-if(!ui[lang]){
-  lang=(navigator.languages||[navigator.language||'en'])
-    .map(x=>x.split('-')[0])
-    .find(x=>ui[x])||'en';
+  return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-const state={
-  sourceUrl:'',
-  source:null,
-  quality:'720p',
-  duration:30,
-  smart:true,
-  subs:true,
-  subLang:'ar',
-  logoUrl:'',
-  logoPosition:'top-right',
-  logoSize:28,
-  logoOpacity:90,
-  job:null,
-  poll:null
-};
+function isBiliBiliUrl(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
 
-function applyLang(){
-  document.documentElement.lang=lang;
-  document.documentElement.dir=ui[lang][1];
-
-  $('#uiLanguage').innerHTML=Object.entries(ui)
-    .map(([k,v])=>`<option value="${k}">${v[0]}</option>`)
-    .join('');
-
-  $('#uiLanguage').value=lang;
-
-  $('#language').innerHTML=Object.entries(sub)
-    .map(([k,v])=>`<option value="${k}">${v}</option>`)
-    .join('');
-
-  $('#language').value=state.subLang;
-
-  const d=dict[lang]||dict.en;
-
-  $$('[data-i18n]').forEach(e=>{
-    if(d[e.dataset.i18n])e.innerHTML=d[e.dataset.i18n];
-  });
+    return host === 'b23.tv' || host === 'bilibili.com' || host.endsWith('.bilibili.com');
+  } catch {
+    return false;
+  }
 }
 
-function toast(m){
-  const e=$('#toast');
-  e.textContent=m;
-  e.classList.add('show');
+function getErrorMessage(data, fallback) {
+  if (data && typeof data.error === 'string' && data.error.trim()) {
+    return data.error;
+  }
 
-  clearTimeout(window.__t);
+  if (data && typeof data.message === 'string' && data.message.trim()) {
+    return data.message;
+  }
 
-  window.__t=setTimeout(
-    ()=>e.classList.remove('show'),
-    3200
-  );
+  return fallback;
 }
 
-function time(v){
-  v=Number(v);
+function setProgress(percent, message) {
+  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  const bar = $('#progressBar');
+  const text = $('#progressText');
+  const note = $('#resultNote');
 
-  if(!Number.isFinite(v))return'—';
-
-  v=Math.round(v);
-
-  return v>=3600
-    ?new Date(v*1000).toISOString().slice(11,19)
-    :`${String(Math.floor(v/60)).padStart(2,'0')}:${String(v%60).padStart(2,'0')}`;
+  if (bar) bar.style.width = `${value}%`;
+  if (text) text.textContent = `${value}%`;
+  if (note && message) note.textContent = message;
 }
 
-function summary(){
-  $('#processSummary').textContent=
-    `${state.source?.bvid||'Source'} · ${state.duration}s · ${state.quality} · 9:16`+
-    `${state.smart?' · AI':''}`+
-    `${state.subs?' · '+state.subLang.toUpperCase():''}`;
+function updateSummary() {
+  const summary = $('#processSummary');
+  if (!summary) return;
+
+  const parts = [
+    state.duration ? `${state.duration}s` : '30s',
+    state.quality || '720p',
+    '9:16'
+  ];
+
+  if (state.smart) parts.push('Smart Split');
+  if (state.subs) parts.push(`Subtitles: ${state.subLang.toUpperCase()}`);
+
+  summary.textContent = parts.join(' · ');
 }
 
-$('#uiLanguage').onchange=e=>{
-  lang=e.target.value;
-  localStorage.setItem('br-ui-lang',lang);
-  applyLang();
-};
+function resetResults() {
+  clearInterval(state.pollTimer);
+  state.pollTimer = null;
+  state.job = null;
+  state.pollStartedAt = 0;
 
-$('#language').onchange=e=>{
-  state.subLang=e.target.value;
-  summary();
-};
+  const result = $('#result');
+  const reelsList = $('#reelsList');
+  const downloadAll = $('#downloadAll');
+  const resultStatus = $('#resultStatus');
 
-$('#themeBtn').onclick=()=>{
-  document.body.classList.toggle('light');
-};
+  if (result) result.classList.add('hidden');
+  if (reelsList) reelsList.innerHTML = '';
+  if (downloadAll) {
+    downloadAll.disabled = true;
+    downloadAll.onclick = null;
+  }
+  setStatus(resultStatus, 'READY', 'ready');
+  setProgress(0, 'جاهز للمعالجة.');
+}
 
-$('#analyzeForm').onsubmit=async e=>{
-  e.preventDefault();
+function renderSource(data) {
+  const preview = $('#remotePreview');
+  const thumbnail = $('#videoThumbnail');
+  const title = $('#videoTitle');
+  const author = $('#videoAuthor');
+  const duration = $('#videoDuration');
 
-  const url=$('#videoUrl').value.trim();
-
-  try{
-    const u=new URL(url);
-
-    if(
-      !/(^|\.)bilibili\.com$/i.test(u.hostname)&&
-      u.hostname.toLowerCase()!=='b23.tv'
-    ){
-      throw Error('Only BiliBili URLs are supported.');
+  if (thumbnail) {
+    if (data.thumbnail) {
+      thumbnail.src = data.thumbnail;
+      thumbnail.style.display = '';
+    } else {
+      thumbnail.removeAttribute('src');
+      thumbnail.style.display = 'none';
     }
-  }catch(x){
-    return toast(x.message);
   }
 
-  $('#analyzeBtn').disabled=true;
-  $('#sourceStatus').textContent='● ANALYZING';
-  $('#sourceStatus').className='status busy';
+  if (title) title.textContent = data.title || 'BiliBili Video';
+  if (author) author.textContent = data.author ? `@${data.author}` : '—';
+  if (duration) duration.textContent = formatDuration(data.duration);
 
-  try{
-    const r=await fetch(
+  if (preview) preview.classList.remove('hidden');
+}
+
+function renderResults(data) {
+  const reelsList = $('#reelsList');
+  const downloadAll = $('#downloadAll');
+  const reels = Array.isArray(data.reels) ? data.reels : [];
+
+  if (!reelsList) return;
+
+  reelsList.innerHTML = reels.map((reel, index) => {
+    const filename = reel.filename || `BiliReels_Reel_${String(index + 1).padStart(3, '0')}.mp4`;
+    const url = reel.url || '';
+    const quality = reel.quality || state.quality;
+
+    if (!url) {
+      return `
+        <div class="reel">
+          <strong>${filename}</strong>
+          <small>${quality} · 9:16</small>
+          <span>الرابط غير متاح بعد</span>
+        </div>
+      `;
+    }
+
+    return `
+      <a class="reel" href="${url}" target="_blank" rel="noopener noreferrer">
+        <strong>${filename}</strong>
+        <small>${quality} · 9:16</small>
+        <span>↧</span>
+      </a>
+    `;
+  }).join('');
+
+  if (!downloadAll) return;
+
+  if (data.zipUrl) {
+    downloadAll.disabled = false;
+    downloadAll.onclick = () => {
+      window.location.href = data.zipUrl;
+    };
+  } else {
+    downloadAll.disabled = true;
+    downloadAll.onclick = null;
+  }
+}
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(getErrorMessage(data, `Request failed (${response.status})`));
+  }
+
+  return data;
+}
+
+async function analyzeSource(url) {
+  const analyzeBtn = $('#analyzeBtn');
+  const sourceStatus = $('#sourceStatus');
+
+  if (!isBiliBiliUrl(url)) {
+    toast('ألصق رابط BiliBili صحيح فقط.');
+    return;
+  }
+
+  if (analyzeBtn) analyzeBtn.disabled = true;
+  setStatus(sourceStatus, '● ANALYZING', 'busy');
+
+  try {
+    resetResults();
+
+    const data = await requestJson(
       `${API.analyze}?url=${encodeURIComponent(url)}`
     );
 
-    const d=await r.json().catch(()=>({}));
+    state.sourceUrl = url;
+    state.source = data;
 
-    if(!r.ok)throw Error(d.error||'Analysis failed');
+    renderSource(data);
 
-    state.sourceUrl=url;
-    state.source=d;
+    const workspace = $('#workspace');
+    if (workspace) workspace.classList.remove('hidden');
 
-    $('#sourceCard').classList.remove('hidden');
-    $('#sourceThumb').src=d.thumbnail||'';
-    $('#sourceTitle').textContent=d.title||'BiliBili Video';
-    $('#sourceAuthor').textContent=d.author?`@${d.author}`:'';
-    $('#sourceDuration').textContent=time(d.duration);
-    $('#sourceBvid').textContent=d.bvid||d.id||'';
-    $('#sourceMessage').textContent=d.message||'Ready';
-
-    $('#sourceStatus').textContent='● READY';
-    $('#sourceStatus').className='status ready';
-
-    $('#workspace').classList.remove('hidden');
-
-    summary();
-
-    toast('Source analyzed.');
-  }catch(x){
-    $('#sourceStatus').textContent='● ERROR';
-    $('#sourceStatus').className='status error';
-    toast(x.message);
-  }finally{
-    $('#analyzeBtn').disabled=false;
+    setStatus(sourceStatus, '● READY', 'ready');
+    updateSummary();
+    toast('تم تحليل مصدر BiliBili بنجاح.');
+  } catch (error) {
+    state.sourceUrl = '';
+    state.source = null;
+    setStatus(sourceStatus, '● ERROR', 'error');
+    toast(error.message || 'تعذر تحليل الرابط.');
+  } finally {
+    if (analyzeBtn) analyzeBtn.disabled = false;
   }
-};
+}
 
-$$('.options,.split-options').forEach(g=>{
-  g.onclick=e=>{
-    const b=e.target.closest('.option');
+function setupOptionGroups() {
+  $$('.options, .split-options').forEach((group) => {
+    group.addEventListener('click', (event) => {
+      const button = event.target.closest('.option');
+      if (!button || !group.contains(button)) return;
 
-    if(!b)return;
+      group.querySelectorAll('.option').forEach((item) => {
+        item.classList.remove('active');
+      });
+      button.classList.add('active');
 
-    g.querySelectorAll('.option')
-      .forEach(x=>x.classList.remove('active'));
+      if (group.dataset.group === 'quality') {
+        state.quality = button.dataset.value || '720p';
+      } else {
+        const value = button.dataset.value || '30';
+        const custom = value === 'custom';
+        const customWrap = $('#customDurationWrap');
 
-    b.classList.add('active');
+        if (customWrap) customWrap.classList.toggle('hidden', !custom);
 
-    if(g.dataset.group==='quality'){
-      state.quality=b.dataset.value;
-    }else{
-      const c=b.dataset.value==='custom';
+        if (!custom) {
+          state.duration = Math.max(10, Math.min(600, Number(value) || 30));
+        }
+      }
 
-      $('#customDurationWrap')
-        .classList.toggle('hidden',!c);
-
-      if(!c)state.duration=+b.dataset.value;
-    }
-
-    summary();
-  };
-});
-
-$('#customDuration').oninput=e=>{
-  state.duration=Math.max(
-    10,
-    Math.min(600,+e.target.value||10)
-  );
-
-  summary();
-};
-
-$('#subtitleToggle').onchange=e=>{
-  state.subs=e.target.checked;
-  summary();
-};
-
-$('#smartSplit').onchange=e=>{
-  state.smart=e.target.checked;
-  summary();
-};
-
-$('#logoUrl').oninput=e=>{
-  state.logoUrl=e.target.value.trim();
-};
-
-$('#logoPosition').onchange=e=>{
-  state.logoPosition=e.target.value;
-};
-
-$('#logoSize').oninput=e=>{
-  $('#logoSizeValue').textContent=e.target.value+'%';
-  state.logoSize=+e.target.value;
-};
-
-$('#logoOpacity').oninput=e=>{
-  $('#logoOpacityValue').textContent=e.target.value+'%';
-  state.logoOpacity=+e.target.value;
-};
-
-function showResult(){
-  $('#result').classList.remove('hidden');
-
-  $('#result').scrollIntoView({
-    behavior:'smooth',
-    block:'start'
+      updateSummary();
+    });
   });
 }
 
-function prog(p,m){
-  p=Math.max(
-    0,
-    Math.min(100,Math.round(p))
-  );
+function setupControls() {
+  const themeBtn = $('#themeBtn');
+  if (themeBtn) {
+    themeBtn.addEventListener('click', () => {
+      document.body.classList.toggle('light');
+    });
+  }
 
-  $('#progressBar').style.width=p+'%';
-  $('#progressText').textContent=p+'%';
+  const language = $('#language');
+  if (language) {
+    language.addEventListener('change', (event) => {
+      state.subLang = event.target.value || 'ar';
+      updateSummary();
+    });
+  }
 
-  if(m)$('#resultNote').textContent=m;
-}
+  const subtitleToggle = $('#subtitleToggle');
+  if (subtitleToggle) {
+    state.subs = subtitleToggle.checked;
+    subtitleToggle.addEventListener('change', (event) => {
+      state.subs = event.target.checked;
+      updateSummary();
+    });
+  }
 
-async function poll(id){
-  clearInterval(state.poll);
+  const smartSplit = $('#smartSplit');
+  if (smartSplit) {
+    state.smart = smartSplit.checked;
+    smartSplit.addEventListener('change', (event) => {
+      state.smart = event.target.checked;
+      updateSummary();
+    });
+  }
 
-  const check=async()=>{
-    try{
-      const r=await fetch(
-        `${API.process}?jobId=${encodeURIComponent(id)}`
-      );
-
-      const d=await r.json().catch(()=>({}));
-
-      if(!r.ok)throw Error(d.error||'Status failed');
-
-      prog(
-        (d.progress||0)*100,
-        d.message
-      );
-
-      if(d.status==='completed'){
-        clearInterval(state.poll);
-
-        $('#resultStatus').textContent='✓ COMPLETE';
-        $('#resultStatus').className='status ready';
-
-        $('#reelsList').innerHTML=
-          (d.reels||[])
-          .map(x=>`
-            <a
-              class="reel"
-              href="${x.url||'#'}"
-              target="_blank"
-              rel="noopener"
-            >
-              <strong>${x.filename}</strong>
-              <small>${x.quality||state.quality} · 9:16</small>
-              <span>↧</span>
-            </a>
-          `)
-          .join('');
-
-        $('#downloadAll').disabled=!d.zipUrl;
-
-        if(d.zipUrl){
-          $('#downloadAll').onclick=()=>{
-            location.href=d.zipUrl;
-          };
-        }
-
-        $('#processBtn').disabled=false;
-
-        toast('Processing completed');
-
-      }else if(d.status==='failed'){
-        clearInterval(state.poll);
-
-        $('#resultStatus').textContent='● ERROR';
-        $('#resultStatus').className='status error';
-
-        $('#processBtn').disabled=false;
-
-        toast(d.error||'Processing failed');
-      }
-
-    }catch(x){
-      clearInterval(state.poll);
-      $('#processBtn').disabled=false;
-      toast(x.message);
-    }
-  };
-
-  await check();
-
-  if(state.job===id){
-    state.poll=setInterval(check,1500);
+  const customDuration = $('#customDuration');
+  if (customDuration) {
+    customDuration.addEventListener('input', (event) => {
+      const value = Number(event.target.value) || 10;
+      state.duration = Math.max(10, Math.min(600, value));
+      updateSummary();
+    });
   }
 }
 
-$('#processBtn').onclick=async()=>{
-  if(!state.source){
-    return toast('Analyze a BiliBili URL first.');
+function setupAnalyzeForm() {
+  const form = $('#analyzeForm');
+  const input = $('#videoUrl');
+
+  if (!form || !input) return;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await analyzeSource(input.value.trim());
+  });
+}
+
+function showResult() {
+  const result = $('#result');
+  if (!result) return;
+
+  result.classList.remove('hidden');
+  result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function stopPolling() {
+  clearInterval(state.pollTimer);
+  state.pollTimer = null;
+}
+
+function finishProcessError(message) {
+  stopPolling();
+  setStatus($('#resultStatus'), '● ERROR', 'error');
+  setProgress(0, message || 'فشلت المعالجة.');
+
+  const processBtn = $('#processBtn');
+  if (processBtn) processBtn.disabled = false;
+
+  toast(message || 'فشلت المعالجة.');
+}
+
+async function checkJob(jobId) {
+  try {
+    const data = await requestJson(
+      `${API.process}?jobId=${encodeURIComponent(jobId)}`
+    );
+
+    const progress = Number(data.progress);
+    setProgress(
+      Number.isFinite(progress) ? progress * 100 : 0,
+      data.message || ''
+    );
+
+    if (data.status === 'completed') {
+      stopPolling();
+
+      setStatus($('#resultStatus'), '✓ COMPLETE', 'ready');
+      renderResults(data);
+
+      const processBtn = $('#processBtn');
+      if (processBtn) processBtn.disabled = false;
+
+      if (!data.reels?.length) {
+        toast('اكتملت المعالجة لكن لم يتم إرجاع ملفات Reels.');
+      } else if (!data.reels.some((item) => item.url) && !data.zipUrl) {
+        setProgress(
+          100,
+          'تم إنشاء الـReels، لكن روابط الملفات غير متاحة. اضبط PUBLIC_BASE_URL في محرك الفيديو.'
+        );
+        toast('تمت المعالجة، لكن روابط النتائج غير متاحة حالياً.');
+      } else {
+        toast('تم إنشاء Reels بنجاح.');
+      }
+
+      return;
+    }
+
+    if (data.status === 'failed') {
+      finishProcessError(data.error || data.message || 'فشلت المعالجة.');
+    }
+  } catch (error) {
+    finishProcessError(error.message || 'تعذر قراءة حالة المعالجة.');
+  }
+}
+
+function startPolling(jobId) {
+  stopPolling();
+  state.pollStartedAt = Date.now();
+
+  checkJob(jobId);
+
+  state.pollTimer = setInterval(() => {
+    if (Date.now() - state.pollStartedAt > 45 * 60 * 1000) {
+      finishProcessError('انتهت مهلة انتظار محرك الفيديو.');
+      return;
+    }
+
+    checkJob(jobId);
+  }, 2000);
+}
+
+async function createProcessJob() {
+  const processBtn = $('#processBtn');
+
+  if (!state.source || !state.sourceUrl) {
+    toast('حلّل رابط BiliBili أولاً.');
+    return;
   }
 
   showResult();
+  setStatus($('#resultStatus'), '● STARTING', 'busy');
+  setProgress(0, 'جاري إرسال الطلب إلى محرك الفيديو…');
 
-  prog(0,'Starting engine…');
+  if (processBtn) processBtn.disabled = true;
 
-  $('#resultStatus').textContent='● STARTING';
-  $('#resultStatus').className='status busy';
-
-  $('#processBtn').disabled=true;
-
-  const body={
-    sourceUrl:state.sourceUrl,
-
-    bvid:
-      state.source.bvid||
-      state.source.id,
-
-    quality:state.quality,
-
-    split:{
-      mode:state.smart?'ai':'fixed',
-      duration:state.duration
+  const payload = {
+    sourceUrl: state.sourceUrl,
+    bvid: state.source.bvid || state.source.id || null,
+    quality: state.quality,
+    split: {
+      mode: state.smart ? 'smart' : 'fixed',
+      duration: state.duration
     },
-
-    subtitles:{
-      enabled:state.subs,
-      language:state.subLang
+    subtitles: {
+      enabled: state.subs,
+      language: state.subLang
     },
-
-    branding:{
-      logoUrl:state.logoUrl||null,
-      position:state.logoPosition,
-      size:state.logoSize,
-      opacity:state.logoOpacity
-    },
-
-    output:{
-      aspect:'9:16',
-      format:'mp4'
+    output: {
+      aspect: '9:16',
+      format: 'mp4'
     }
   };
 
-  try{
-    const r=await fetch(
-      API.process,
-      {
-        method:'POST',
-        headers:{
-          'content-type':'application/json'
-        },
-        body:JSON.stringify(body)
-      }
-    );
+  try {
+    const data = await requestJson(API.process, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
 
-    const d=await r.json().catch(()=>({}));
-
-    if(!r.ok){
-      throw Error(
-        d.error||
-        'Could not start job'
-      );
+    if (!data.jobId) {
+      throw new Error('محرك الفيديو لم يُرجع jobId.');
     }
 
-    if(!d.jobId){
-      throw Error(
-        'Video engine did not return a jobId'
-      );
-    }
-
-    state.job=d.jobId;
-
-    poll(state.job);
-
-  }catch(x){
-    $('#resultStatus').textContent='● ERROR';
-    $('#resultStatus').className='status error';
-
-    $('#processBtn').disabled=false;
-
-    toast(x.message);
+    state.job = data.jobId;
+    setStatus($('#resultStatus'), '● PROCESSING', 'busy');
+    setProgress(0, data.message || 'تم إنشاء مهمة المعالجة.');
+    startPolling(data.jobId);
+  } catch (error) {
+    finishProcessError(error.message || 'تعذر بدء المعالجة.');
   }
-};
+}
 
-applyLang();
-summary();
+function setupProcessButton() {
+  const processBtn = $('#processBtn');
+  if (!processBtn) return;
+
+  processBtn.addEventListener('click', createProcessJob);
+}
+
+function initialize() {
+  setupAnalyzeForm();
+  setupOptionGroups();
+  setupControls();
+  setupProcessButton();
+  updateSummary();
+}
+
+initialize();
