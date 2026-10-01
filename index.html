@@ -101,7 +101,7 @@
   </div>
 
   <div class="source-view active">
-    <form id="analyzeForm" onsubmit="event.preventDefault();">
+    <form id="analyzeForm">
       <div class="url-row">
         <span class="link-icon">↗</span>
         <input
@@ -120,6 +120,7 @@
         </button>
       </div>
     </form>
+    <p class="analysis-message hidden" id="analysisMessage" role="status" aria-live="polite"></p>
     <p class="hint">
       يدعم BiliReels روابط BiliBili العامة التي يستطيع محرك الفيديو الوصول إليها.
     </p>
@@ -129,11 +130,12 @@
   <div class="remote-preview hidden" id="videoCard">
     <div class="preview-card">
       <div class="preview-thumb">
-        <img id="videoThumbnail" alt="Video thumbnail">
+        <img id="videoThumbnail" alt="صورة مصغرة للفيديو" referrerpolicy="no-referrer" hidden>
+        <div class="preview-thumb-fallback" id="thumbnailFallback" aria-hidden="true">BiliReels</div>
       </div>
       <div class="preview-info">
         <span class="section-kicker">SOURCE READY</span>
-        <h3 id="videoTitle">—</h3>
+        <h3 id="videoTitle" dir="auto">—</h3>
         <div class="preview-meta">
           <div>
             <span>DURATION</span>
