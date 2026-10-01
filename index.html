@@ -175,7 +175,7 @@
       <div class="format-card active">
         <strong>9:16</strong>
         <span>Vertical Reel</span>
-        <b>480 / 720 / 1080</b>
+        <b>720p · H.264/AAC · MP4</b>
       </div>
     </article>
 
@@ -185,23 +185,23 @@
         <span>الجودة</span>
       </div>
       <div class="options" data-group="quality">
-        <button class="option" data-value="480p" type="button">480p <small>خفيف</small></button>
+        <button class="option" data-value="480p" type="button" disabled title="سيُفعّل في مرحلة لاحقة">480p <small>لاحقًا</small></button>
         <button class="option active" data-value="720p" type="button">720p <small>متوازن</small></button>
-        <button class="option" data-value="1080p" type="button">1080p <small>أعلى</small></button>
+        <button class="option" data-value="1080p" type="button" disabled title="سيُفعّل في مرحلة لاحقة">1080p <small>لاحقًا</small></button>
       </div>
     </article>
 
     <article class="panel">
       <div class="panel-title">
         <span>SUBTITLES</span>
-        <span>الترجمة</span>
+        <span>لاحقًا</span>
       </div>
       <label class="switch-line">
-        <span>إنشاء Subtitles</span>
-        <input id="subtitleToggle" type="checkbox" checked>
+        <span>الترجمة غير مفعّلة بعد</span>
+        <input id="subtitleToggle" type="checkbox" disabled>
         <i></i>
       </label>
-      <select id="language">
+      <select id="language" disabled>
         <option value="ar">العربية</option>
         <option value="en">English</option>
         <option value="fr">Français</option>
@@ -226,16 +226,16 @@
       </div>
       <div class="split-options" data-group="split">
         <button class="option active" data-value="30" type="button">30 ثانية</button>
-        <button class="option" data-value="60" type="button">60 ثانية</button>
-        <button class="option" data-value="custom" type="button">مخصص</button>
+        <button class="option" data-value="60" type="button" disabled title="سيُفعّل في مرحلة لاحقة">60 ثانية</button>
+        <button class="option" data-value="custom" type="button" disabled title="سيُفعّل في مرحلة لاحقة">مخصص</button>
       </div>
       <div class="smart-row">
         <span>
           <b>Smart Split</b>
-          <small>تفعيل التقسيم الذكي</small>
+          <small>سيُفعّل في مرحلة لاحقة</small>
         </span>
         <label class="switch">
-          <input id="smartSplit" type="checkbox" checked>
+          <input id="smartSplit" type="checkbox" disabled>
           <i></i>
         </label>
       </div>
@@ -244,12 +244,12 @@
 
   <div class="process-bar">
     <div>
-      <span>READY TO PROCESS</span>
-      <small id="processSummary">1 · 30s · 720p · 9:16</small>
+          <span>READY TO PROCESS</span>
+          <small id="processSummary">1 Reel · 30 ثانية · 720p · 9:16</small>
     </div>
     <!-- تم تغيير المعرّف إلى startDownloadBtn للربط مع مرحلة التحميل الحقيقية في app.js -->
     <button class="primary" id="startDownloadBtn" type="button">
-      بدء التحميل والتحويل
+      إنشاء Reel واحد · 30 ثانية
       <span>→</span>
     </button>
   </div>
@@ -265,12 +265,11 @@
     <span class="status text-blue-500" id="progressStatusText">جاري بدء المهمة...</span>
   </div>
 
-  <div class="progress" style="background: #1a1d2d; border-radius: 8px; overflow: hidden; margin-top: 1rem; height: 10px; width: 100%;">
-    <i id="progressBarFill" style="display: block; height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s ease-out;"></i>
+  <div class="progress" role="progressbar" aria-label="حالة المعالجة" style="background: #1a1d2d; border-radius: 8px; overflow: hidden; margin-top: 1rem; height: 10px; width: 100%;">
+    <i id="progressBarFill" class="progress-indeterminate" style="display: block; height: 100%; background: #8b5cf6; width: 35%; transition: width 0.3s ease-out;"></i>
   </div>
-  
-  <div id="progressPercentage" style="font:600 12px 'Space Grotesk';color:#7f89a1;margin-top:8px; text-align: left;">
-    0%
+  <div id="progressPercentage" aria-live="polite" style="font:600 12px 'Space Grotesk';color:#7f89a1;margin-top:8px; text-align: left;">
+    نسبة مئوية غير متاحة؛ ستظهر مرحلة العامل الفعلية.
   </div>
 </section>
 
@@ -285,6 +284,11 @@
   </div>
 
   <div class="reels-list" id="reelsList"></div>
+  <div class="reel-preview-wrap" id="reelPreviewWrap" hidden>
+    <video id="reelVideo" controls playsinline preload="metadata" aria-label="معاينة Reel الناتج"></video>
+    <p id="reelPreviewStatus" role="status" aria-live="polite">يتم تجهيز المعاينة…</p>
+  </div>
+  <p class="worker-note" id="resultNote">سيُنزل ملف ZIP مؤقتًا يحتوي ملف MP4؛ تنتهي صلاحيته بعد يوم.</p>
 
   <button class="primary full" id="downloadAll" type="button">
     تحميل الكل ZIP
@@ -332,6 +336,21 @@
   <span>BiliBili → Reels Studio</span>
   <small>© 2026 BiliReels</small>
 </footer>
+
+<dialog class="worker-auth-dialog" id="workerAuthDialog" aria-labelledby="workerAuthTitle">
+  <form id="workerAuthForm">
+    <span class="section-kicker">PRIVATE WORKER</span>
+    <h2 id="workerAuthTitle">رمز تشغيل المعالجة</h2>
+    <p>هذه الخطوة محمية حتى لا يُستهلك رصيد GitHub Actions من زوار الموقع. لا ترسل الرمز لأحد.</p>
+    <label for="workerAccessCode">رمز الوصول</label>
+    <input id="workerAccessCode" type="password" autocomplete="current-password" required minlength="24">
+    <p class="worker-auth-error" id="workerAuthError" role="alert" hidden></p>
+    <div class="worker-auth-actions">
+      <button class="secondary" id="workerAuthCancel" type="button">إلغاء</button>
+      <button class="primary" id="workerAuthSubmit" type="submit">فتح المعالجة</button>
+    </div>
+  </form>
+</dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
