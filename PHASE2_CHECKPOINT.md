@@ -23,7 +23,7 @@
 
 ## Activation status
 
-The private worker repository is live at `koreaone10-del/BiliReels-Worker` on `main` (commit `59a0dc83e6d89097ed5401cde1dac93c065527c1`); GitHub reports its workflow as active. The Vercel source changes still need pushing to the existing web repository `main`. Production secrets (`GH_WORKER_TOKEN`, `BILIREELS_ACCESS_CODE`) must be added and the resulting Vercel deployment verified before a live processing run. No secrets are stored in either repository.
+The private worker repository is live at `koreaone10-del/BiliReels-Worker` on `main` (commit `59a0dc83e6d89097ed5401cde1dac93c065527c1`); GitHub reports its workflow as active. Web changes are on the existing repository `main` at `9ea777c08e7861840bb0bea7cbff6677441f1e06`; Vercel serves the updated home page and JavaScript (HTTP 200), and the metadata API still returns the expected title and thumbnail. `/api/auth` returns JSON 503 because `BILIREELS_ACCESS_CODE` is not yet set in Production. Add `GH_WORKER_TOKEN` and `BILIREELS_ACCESS_CODE` to Vercel and verify the resulting deployment before a live processing run. No secrets are stored in either repository.
 
 ## Not yet implemented
 
