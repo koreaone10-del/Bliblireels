@@ -54,12 +54,28 @@ function formatDuration(value) {
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+/*
+ * Supported BiliBili domains:
+ * - bilibili.com
+ * - *.bilibili.com
+ * - bilibili.tv
+ * - *.bilibili.tv
+ * - b23.tv
+ * - bili.im
+ */
 function isBiliBiliUrl(value) {
   try {
     const url = new URL(value);
     const host = url.hostname.toLowerCase();
 
-    return host === 'b23.tv' || host === 'bilibili.com' || host.endsWith('.bilibili.com');
+    return (
+      host === 'b23.tv' ||
+      host === 'bili.im' ||
+      host === 'bilibili.com' ||
+      host.endsWith('.bilibili.com') ||
+      host === 'bilibili.tv' ||
+      host.endsWith('.bilibili.tv')
+    );
   } catch {
     return false;
   }
@@ -78,7 +94,11 @@ function getErrorMessage(data, fallback) {
 }
 
 function setProgress(percent, message) {
-  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  const value = Math.max(
+    0,
+    Math.min(100, Math.round(Number(percent) || 0))
+  );
+
   const bar = $('#progressBar');
   const text = $('#progressText');
   const note = $('#resultNote');
@@ -99,13 +119,16 @@ function updateSummary() {
   ];
 
   if (state.smart) parts.push('Smart Split');
-  if (state.subs) parts.push(`Subtitles: ${state.subLang.toUpperCase()}`);
+  if (state.subs) {
+    parts.push(`Subtitles: ${state.subLang.toUpperCase()}`);
+  }
 
   summary.textContent = parts.join(' · ');
 }
 
 function resetResults() {
   clearInterval(state.pollTimer);
+
   state.pollTimer = null;
   state.job = null;
   state.pollStartedAt = 0;
@@ -116,11 +139,16 @@ function resetResults() {
   const resultStatus = $('#resultStatus');
 
   if (result) result.classList.add('hidden');
-  if (reelsList) reelsList.innerHTML = '';
+
+  if (reelsList) {
+    reelsList.innerHTML = '';
+  }
+
   if (downloadAll) {
     downloadAll.disabled = true;
     downloadAll.onclick = null;
   }
+
   setStatus(resultStatus, 'READY', 'ready');
   setProgress(0, 'جاهز للمعالجة.');
 }
@@ -142,22 +170,38 @@ function renderSource(data) {
     }
   }
 
-  if (title) title.textContent = data.title || 'BiliBili Video';
-  if (author) author.textContent = data.author ? `@${data.author}` : '—';
-  if (duration) duration.textContent = formatDuration(data.duration);
+  if (title) {
+    title.textContent = data.title || 'BiliBili Video';
+  }
 
-  if (preview) preview.classList.remove('hidden');
+  if (author) {
+    author.textContent = data.author ? `@${data.author}` : '—';
+  }
+
+  if (duration) {
+    duration.textContent = formatDuration(data.duration);
+  }
+
+  if (preview) {
+    preview.classList.remove('hidden');
+  }
 }
 
 function renderResults(data) {
   const reelsList = $('#reelsList');
   const downloadAll = $('#downloadAll');
-  const reels = Array.isArray(data.reels) ? data.reels : [];
+
+  const reels = Array.isArray(data.reels)
+    ? data.reels
+    : [];
 
   if (!reelsList) return;
 
   reelsList.innerHTML = reels.map((reel, index) => {
-    const filename = reel.filename || `BiliReels_Reel_${String(index + 1).padStart(3, '0')}.mp4`;
+    const filename =
+      reel.filename ||
+      `BiliReels_Reel_${String(index + 1).padStart(3, '0')}.mp4`;
+
     const url = reel.url || '';
     const quality = reel.quality || state.quality;
 
@@ -172,7 +216,12 @@ function renderResults(data) {
     }
 
     return `
-      <a class="reel" href="${url}" target="_blank" rel="noopener noreferrer">
+      <a
+        class="reel"
+        href="${url}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         <strong>${filename}</strong>
         <small>${quality} · 9:16</small>
         <span>↧</span>
@@ -184,6 +233,7 @@ function renderResults(data) {
 
   if (data.zipUrl) {
     downloadAll.disabled = false;
+
     downloadAll.onclick = () => {
       window.location.href = data.zipUrl;
     };
@@ -195,10 +245,18 @@ function renderResults(data) {
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
-  const data = await response.json().catch(() => ({}));
+
+  const data = await response
+    .json()
+    .catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(getErrorMessage(data, `Request failed (${response.status})`));
+    throw new Error(
+      getErrorMessage(
+        data,
+        `Request failed (${response.status})`
+      )
+    );
   }
 
   return data;
@@ -213,8 +271,15 @@ async function analyzeSource(url) {
     return;
   }
 
-  if (analyzeBtn) analyzeBtn.disabled = true;
-  setStatus(sourceStatus, '● ANALYZING', 'busy');
+  if (analyzeBtn) {
+    analyzeBtn.disabled = true;
+  }
+
+  setStatus(
+    sourceStatus,
+    '● ANALYZING',
+    'busy'
+  );
 
   try {
     resetResults();
@@ -229,43 +294,85 @@ async function analyzeSource(url) {
     renderSource(data);
 
     const workspace = $('#workspace');
-    if (workspace) workspace.classList.remove('hidden');
 
-    setStatus(sourceStatus, '● READY', 'ready');
+    if (workspace) {
+      workspace.classList.remove('hidden');
+    }
+
+    setStatus(
+      sourceStatus,
+      '● READY',
+      'ready'
+    );
+
     updateSummary();
+
     toast('تم تحليل مصدر BiliBili بنجاح.');
   } catch (error) {
     state.sourceUrl = '';
     state.source = null;
-    setStatus(sourceStatus, '● ERROR', 'error');
-    toast(error.message || 'تعذر تحليل الرابط.');
+
+    setStatus(
+      sourceStatus,
+      '● ERROR',
+      'error'
+    );
+
+    toast(
+      error.message ||
+      'تعذر تحليل الرابط.'
+    );
   } finally {
-    if (analyzeBtn) analyzeBtn.disabled = false;
+    if (analyzeBtn) {
+      analyzeBtn.disabled = false;
+    }
   }
 }
 
 function setupOptionGroups() {
   $$('.options, .split-options').forEach((group) => {
     group.addEventListener('click', (event) => {
-      const button = event.target.closest('.option');
-      if (!button || !group.contains(button)) return;
+      const button =
+        event.target.closest('.option');
 
-      group.querySelectorAll('.option').forEach((item) => {
-        item.classList.remove('active');
-      });
+      if (!button || !group.contains(button)) {
+        return;
+      }
+
+      group
+        .querySelectorAll('.option')
+        .forEach((item) => {
+          item.classList.remove('active');
+        });
+
       button.classList.add('active');
 
       if (group.dataset.group === 'quality') {
-        state.quality = button.dataset.value || '720p';
+        state.quality =
+          button.dataset.value || '720p';
       } else {
-        const value = button.dataset.value || '30';
-        const custom = value === 'custom';
-        const customWrap = $('#customDurationWrap');
+        const value =
+          button.dataset.value || '30';
 
-        if (customWrap) customWrap.classList.toggle('hidden', !custom);
+        const custom = value === 'custom';
+        const customWrap =
+          $('#customDurationWrap');
+
+        if (customWrap) {
+          customWrap.classList.toggle(
+            'hidden',
+            !custom
+          );
+        }
 
         if (!custom) {
-          state.duration = Math.max(10, Math.min(600, Number(value) || 30));
+          state.duration = Math.max(
+            10,
+            Math.min(
+              600,
+              Number(value) || 30
+            )
+          );
         }
       }
 
@@ -276,6 +383,7 @@ function setupOptionGroups() {
 
 function setupControls() {
   const themeBtn = $('#themeBtn');
+
   if (themeBtn) {
     themeBtn.addEventListener('click', () => {
       document.body.classList.toggle('light');
@@ -283,38 +391,73 @@ function setupControls() {
   }
 
   const language = $('#language');
+
   if (language) {
-    language.addEventListener('change', (event) => {
-      state.subLang = event.target.value || 'ar';
-      updateSummary();
-    });
+    language.addEventListener(
+      'change',
+      (event) => {
+        state.subLang =
+          event.target.value || 'ar';
+
+        updateSummary();
+      }
+    );
   }
 
-  const subtitleToggle = $('#subtitleToggle');
+  const subtitleToggle =
+    $('#subtitleToggle');
+
   if (subtitleToggle) {
-    state.subs = subtitleToggle.checked;
-    subtitleToggle.addEventListener('change', (event) => {
-      state.subs = event.target.checked;
-      updateSummary();
-    });
+    state.subs =
+      subtitleToggle.checked;
+
+    subtitleToggle.addEventListener(
+      'change',
+      (event) => {
+        state.subs =
+          event.target.checked;
+
+        updateSummary();
+      }
+    );
   }
 
-  const smartSplit = $('#smartSplit');
+  const smartSplit =
+    $('#smartSplit');
+
   if (smartSplit) {
-    state.smart = smartSplit.checked;
-    smartSplit.addEventListener('change', (event) => {
-      state.smart = event.target.checked;
-      updateSummary();
-    });
+    state.smart =
+      smartSplit.checked;
+
+    smartSplit.addEventListener(
+      'change',
+      (event) => {
+        state.smart =
+          event.target.checked;
+
+        updateSummary();
+      }
+    );
   }
 
-  const customDuration = $('#customDuration');
+  const customDuration =
+    $('#customDuration');
+
   if (customDuration) {
-    customDuration.addEventListener('input', (event) => {
-      const value = Number(event.target.value) || 10;
-      state.duration = Math.max(10, Math.min(600, value));
-      updateSummary();
-    });
+    customDuration.addEventListener(
+      'input',
+      (event) => {
+        const value =
+          Number(event.target.value) || 10;
+
+        state.duration = Math.max(
+          10,
+          Math.min(600, value)
+        );
+
+        updateSummary();
+      }
+    );
   }
 }
 
@@ -324,18 +467,29 @@ function setupAnalyzeForm() {
 
   if (!form || !input) return;
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await analyzeSource(input.value.trim());
-  });
+  form.addEventListener(
+    'submit',
+    async (event) => {
+      event.preventDefault();
+
+      await analyzeSource(
+        input.value.trim()
+      );
+    }
+  );
 }
 
 function showResult() {
   const result = $('#result');
+
   if (!result) return;
 
   result.classList.remove('hidden');
-  result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  result.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  });
 }
 
 function stopPolling() {
@@ -345,101 +499,190 @@ function stopPolling() {
 
 function finishProcessError(message) {
   stopPolling();
-  setStatus($('#resultStatus'), '● ERROR', 'error');
-  setProgress(0, message || 'فشلت المعالجة.');
 
-  const processBtn = $('#processBtn');
-  if (processBtn) processBtn.disabled = false;
+  setStatus(
+    $('#resultStatus'),
+    '● ERROR',
+    'error'
+  );
 
-  toast(message || 'فشلت المعالجة.');
+  setProgress(
+    0,
+    message || 'فشلت المعالجة.'
+  );
+
+  const processBtn =
+    $('#processBtn');
+
+  if (processBtn) {
+    processBtn.disabled = false;
+  }
+
+  toast(
+    message ||
+    'فشلت المعالجة.'
+  );
 }
 
 async function checkJob(jobId) {
   try {
-    const data = await requestJson(
-      `${API.process}?jobId=${encodeURIComponent(jobId)}`
-    );
+    const data =
+      await requestJson(
+        `${API.process}?jobId=${encodeURIComponent(jobId)}`
+      );
 
-    const progress = Number(data.progress);
+    const progress =
+      Number(data.progress);
+
     setProgress(
-      Number.isFinite(progress) ? progress * 100 : 0,
+      Number.isFinite(progress)
+        ? progress * 100
+        : 0,
       data.message || ''
     );
 
     if (data.status === 'completed') {
       stopPolling();
 
-      setStatus($('#resultStatus'), '✓ COMPLETE', 'ready');
+      setStatus(
+        $('#resultStatus'),
+        '✓ COMPLETE',
+        'ready'
+      );
+
       renderResults(data);
 
-      const processBtn = $('#processBtn');
-      if (processBtn) processBtn.disabled = false;
+      const processBtn =
+        $('#processBtn');
+
+      if (processBtn) {
+        processBtn.disabled = false;
+      }
 
       if (!data.reels?.length) {
-        toast('اكتملت المعالجة لكن لم يتم إرجاع ملفات Reels.');
-      } else if (!data.reels.some((item) => item.url) && !data.zipUrl) {
+        toast(
+          'اكتملت المعالجة لكن لم يتم إرجاع ملفات Reels.'
+        );
+      } else if (
+        !data.reels.some(
+          (item) => item.url
+        ) &&
+        !data.zipUrl
+      ) {
         setProgress(
           100,
           'تم إنشاء الـReels، لكن روابط الملفات غير متاحة. اضبط PUBLIC_BASE_URL في محرك الفيديو.'
         );
-        toast('تمت المعالجة، لكن روابط النتائج غير متاحة حالياً.');
+
+        toast(
+          'تمت المعالجة، لكن روابط النتائج غير متاحة حالياً.'
+        );
       } else {
-        toast('تم إنشاء Reels بنجاح.');
+        toast(
+          'تم إنشاء Reels بنجاح.'
+        );
       }
 
       return;
     }
 
     if (data.status === 'failed') {
-      finishProcessError(data.error || data.message || 'فشلت المعالجة.');
+      finishProcessError(
+        data.error ||
+        data.message ||
+        'فشلت المعالجة.'
+      );
     }
   } catch (error) {
-    finishProcessError(error.message || 'تعذر قراءة حالة المعالجة.');
+    finishProcessError(
+      error.message ||
+      'تعذر قراءة حالة المعالجة.'
+    );
   }
 }
 
 function startPolling(jobId) {
   stopPolling();
-  state.pollStartedAt = Date.now();
+
+  state.pollStartedAt =
+    Date.now();
 
   checkJob(jobId);
 
-  state.pollTimer = setInterval(() => {
-    if (Date.now() - state.pollStartedAt > 45 * 60 * 1000) {
-      finishProcessError('انتهت مهلة انتظار محرك الفيديو.');
-      return;
-    }
+  state.pollTimer =
+    setInterval(() => {
+      if (
+        Date.now() -
+        state.pollStartedAt >
+        45 * 60 * 1000
+      ) {
+        finishProcessError(
+          'انتهت مهلة انتظار محرك الفيديو.'
+        );
 
-    checkJob(jobId);
-  }, 2000);
+        return;
+      }
+
+      checkJob(jobId);
+    }, 2000);
 }
 
 async function createProcessJob() {
-  const processBtn = $('#processBtn');
+  const processBtn =
+    $('#processBtn');
 
-  if (!state.source || !state.sourceUrl) {
-    toast('حلّل رابط BiliBili أولاً.');
+  if (
+    !state.source ||
+    !state.sourceUrl
+  ) {
+    toast(
+      'حلّل رابط BiliBili أولاً.'
+    );
+
     return;
   }
 
   showResult();
-  setStatus($('#resultStatus'), '● STARTING', 'busy');
-  setProgress(0, 'جاري إرسال الطلب إلى محرك الفيديو…');
 
-  if (processBtn) processBtn.disabled = true;
+  setStatus(
+    $('#resultStatus'),
+    '● STARTING',
+    'busy'
+  );
+
+  setProgress(
+    0,
+    'جاري إرسال الطلب إلى محرك الفيديو…'
+  );
+
+  if (processBtn) {
+    processBtn.disabled = true;
+  }
 
   const payload = {
     sourceUrl: state.sourceUrl,
-    bvid: state.source.bvid || state.source.id || null,
+
+    bvid:
+      state.source.bvid ||
+      state.source.id ||
+      null,
+
     quality: state.quality,
+
     split: {
-      mode: state.smart ? 'smart' : 'fixed',
-      duration: state.duration
+      mode: state.smart
+        ? 'smart'
+        : 'fixed',
+
+      duration:
+        state.duration
     },
+
     subtitles: {
       enabled: state.subs,
       language: state.subLang
     },
+
     output: {
       aspect: '9:16',
       format: 'mp4'
@@ -447,32 +690,64 @@ async function createProcessJob() {
   };
 
   try {
-    const data = await requestJson(API.process, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
+    const data =
+      await requestJson(
+        API.process,
+        {
+          method: 'POST',
+
+          headers: {
+            'content-type':
+              'application/json'
+          },
+
+          body:
+            JSON.stringify(payload)
+        }
+      );
 
     if (!data.jobId) {
-      throw new Error('محرك الفيديو لم يُرجع jobId.');
+      throw new Error(
+        'محرك الفيديو لم يُرجع jobId.'
+      );
     }
 
-    state.job = data.jobId;
-    setStatus($('#resultStatus'), '● PROCESSING', 'busy');
-    setProgress(0, data.message || 'تم إنشاء مهمة المعالجة.');
-    startPolling(data.jobId);
+    state.job =
+      data.jobId;
+
+    setStatus(
+      $('#resultStatus'),
+      '● PROCESSING',
+      'busy'
+    );
+
+    setProgress(
+      0,
+      data.message ||
+      'تم إنشاء مهمة المعالجة.'
+    );
+
+    startPolling(
+      data.jobId
+    );
   } catch (error) {
-    finishProcessError(error.message || 'تعذر بدء المعالجة.');
+    finishProcessError(
+      error.message ||
+      'تعذر بدء المعالجة.'
+    );
   }
 }
 
 function setupProcessButton() {
-  const processBtn = $('#processBtn');
+  const processBtn =
+    $('#processBtn');
+
   if (!processBtn) return;
 
-  processBtn.addEventListener('click', createProcessJob);
+  processBtn.addEventListener(
+    'click',
+    createProcessJob
+  );
 }
 
 function initialize() {
