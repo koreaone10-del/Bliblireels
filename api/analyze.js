@@ -4,16 +4,17 @@ function json(data, status = 200) {
     {
       status,
       headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'cache-control': 'no-store'
+        'content-type':
+          'application/json; charset=utf-8',
+
+        'cache-control':
+          'no-store'
       }
     }
   );
 }
 
-
 function validBiliBili(url) {
-
   let parsed;
 
   try {
@@ -27,26 +28,28 @@ function validBiliBili(url) {
 
   return (
     host === 'b23.tv' ||
-    host.endsWith('bilibili.com')
+    host === 'bili.im' ||
+    host === 'bilibili.com' ||
+    host.endsWith('.bilibili.com') ||
+    host === 'bilibili.tv' ||
+    host.endsWith('.bilibili.tv')
   );
 }
 
-
 export default async function handler(req) {
-
   const url =
     new URL(req.url)
       .searchParams
       .get('url');
 
-
   if (!url) {
     return json(
-      { error: 'Missing url' },
+      {
+        error: 'Missing url'
+      },
       400
     );
   }
-
 
   if (!validBiliBili(url)) {
     return json(
@@ -58,14 +61,11 @@ export default async function handler(req) {
     );
   }
 
-
   const base =
     (process.env.VIDEO_ENGINE_URL || '')
       .replace(/\/$/, '');
 
-
   if (!base) {
-
     return json(
       {
         error:
@@ -73,12 +73,9 @@ export default async function handler(req) {
       },
       503
     );
-
   }
 
-
   try {
-
     const response =
       await fetch(
         `${base}/analyze`,
@@ -96,21 +93,16 @@ export default async function handler(req) {
         }
       );
 
-
     const data =
       await response
         .json()
         .catch(() => ({}));
 
-
     return json(
       data,
       response.status
     );
-
-
   } catch {
-
     return json(
       {
         error:
@@ -118,7 +110,5 @@ export default async function handler(req) {
       },
       502
     );
-
   }
-
 }
