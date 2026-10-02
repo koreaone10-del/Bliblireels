@@ -1,63 +1,27 @@
-# BiliReels — Vercel + private free worker
+# BiliReels — Local Reel Studio
 
-BiliReels keeps the current lightweight URL preview on Vercel and delegates the CPU-heavy FFmpeg work to a short-lived, private GitHub Actions runner.
+BiliReels now processes a video file selected by the visitor directly in the browser. It does not upload the video, start GitHub Actions, or require GitHub/Vercel API tokens. The optional BiliBili link form retrieves page metadata only; it does not download media.
 
-## What is implemented
+## Visitor flow
 
-- Analyze public BiliBili / BiliBili.tv URLs and show source metadata and thumbnail.
-- Create **one** Reel from the first 30 seconds, in a 9:16 `720×1280` H.264/AAC MP4.
-- Use a blurred-fit background so the full original frame remains visible; preserve source audio when present.
-- Show the real GitHub Actions stage; no invented percentage.
-- Preview the MP4 in the browser and download the original private artifact ZIP.
-- Worker runs only on GitHub's standard `ubuntu-latest` runner. No paid runner, third-party video API, or public file bucket is used.
+1. Save a video file to the device using a method permitted for that content.
+2. Select the local file in BiliReels.
+3. The browser plays and captures up to the first 30 seconds, fitting the complete frame into a 9:16 canvas with a blurred background.
+4. A pinned ffmpeg.wasm UMD/core build converts that short capture into a 720×1280 H.264/AAC MP4. The visitor can preview and download the result.
 
-Subtitles, logo overlay, 60-second/custom durations, 480p/1080p and smart split are intentionally disabled until their own processing implementations are added.
+Files are held in local browser object URLs and are not sent to the BiliReels server. The pinned ffmpeg.wasm 0.12.15 UMD bundle and its small worker are served from this site (`vendor/ffmpeg/`) so the worker is same-origin. On first conversion, the browser fetches the pinned ffmpeg-core 0.12.10 JavaScript/WebAssembly files (about 31 MB total) from jsDelivr and converts them to local blob URLs; this transfers the processing library, not the visitor's source video. The included FFmpeg.wasm files are MIT-licensed; see `vendor/ffmpeg/LICENSE`. On-device conversion can be slow or unavailable on older/low-memory mobile devices. Use a current Chrome, Edge, or Safari browser and keep the page open until the export finishes. Source videos under 30 seconds produce shorter outputs.
 
-## Architecture
+The optional `/api/metadata` endpoint remains for public BiliBili title/thumbnail previews. It is not used as a media source. Subtitles, logo overlay, AI highlight selection, arbitrary duration, and batch output are not implemented and are not represented as working controls.
 
-```text
-Browser
-  └─ Vercel: static UI + /api/metadata + /api/auth + /api/jobs
-       └─ fine-grained GitHub token (server only)
-            └─ private repository: koreaone10-del/BiliReels-Worker
-                 └─ GitHub Actions: yt-dlp + FFmpeg → short-lived private artifact
-```
+## Deployment
 
-The GitHub token and access code must never be committed, put in `app.js`, or sent in chat.
-
-## One-time setup
-
-1. The private worker repository `koreaone10-del/BiliReels-Worker` is already provisioned on `main`; verify it remains private and its workflow is enabled.
-2. In GitHub, create a fine-grained token scoped only to that private worker repository, with **Actions: read and write** and **Contents: read**. Keep it private.
-3. In the Vercel project `bliblireels`, add these **Production** environment variables:
-   - `GH_WORKER_TOKEN` — the fine-grained token; mark it sensitive/encrypted.
-   - `BILIREELS_ACCESS_CODE` — generate a long random value locally (at least 24 characters); the same value is entered in the site's processing dialog.
-   - `GH_WORKER_REPO` — optional; default is `koreaone10-del/BiliReels-Worker`.
-4. Set GitHub Actions spending to stop at `$0` overage. The private repo uses the included account-wide Free allowance; usage is not guaranteed if the account has already spent the shared allowance.
-5. Redeploy the latest Vercel production deployment after setting environment variables.
-
-Do not send either secret in a message or commit it to this repository. Keep these variables Production-only unless you deliberately want Preview deployments to run jobs too.
-
-## Free-use guardrails
-
-- Maximum one queued/running job at a time and **100 launches per month** (up to 15 runner-minutes each; the hard timeout is 15 minutes).
-- Output capped at 75 MiB; Actions artifact retention is one day.
-- The backend refuses new jobs if too many unexpired artifacts remain.
-- Private repo is required because run metadata may contain the source URL and artifacts must not be public.
-- These caps reduce risk but cannot see other workloads using the same GitHub account quota. Keep overage spending disabled.
-
-## Source restrictions
-
-Only public supported BiliBili pages are accepted. Some videos are unavailable by region, rights settings or upstream changes. The worker does not use cookies, account credentials, DRM circumvention or access-control/geo bypass. Process only media you have permission to use.
+The site is static plus the optional metadata function. No `GH_WORKER_TOKEN`, `BILIREELS_ACCESS_CODE`, worker repository, storage bucket, or server-side media processing is needed. Remove the old token-gated API files from the deployment; revoke any worker token created solely for the previous workflow and delete its Vercel environment variables after confirming the new deployment is live.
 
 ## Local checks
 
 ```bash
 node --check app.js
-node --input-type=module --check < api/auth.js
-node --input-type=module --check < api/jobs.js
-node --input-type=module --check < lib/access.js
-node --input-type=module --check < zip-preview.js
+node --input-type=module --check < api/metadata.js
 ```
 
-The worker test uses a synthetic local clip and never downloads the user's source video.
+The browser workflow was also verified with a local five-second synthetic MP4: it reached 100%, showed a playable preview, and downloaded a valid 720×1280 H.264/AAC MP4 (4.96 seconds). The source file was not uploaded.
