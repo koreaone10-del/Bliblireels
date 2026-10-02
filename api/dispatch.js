@@ -1,13 +1,15 @@
-// api/dispatch.js — sends the job to the Render worker instead of GitHub.
+// api/dispatch.js — coordinates: Render downloads, GitHub processes.
 import { verifySessionToken } from './auth.js';
 
-const WORKER_URL = process.env.WORKER_URL || '';
-const WORKER_SECRET = process.env.WORKER_SECRET || '';
+const DOWNLOADER_URL = process.env.DOWNLOADER_URL || '';
+const DOWNLOADER_SECRET = process.env.DOWNLOADER_SECRET || '';
+const GH_TOKEN = process.env.GH_WORKER_TOKEN || '';
+const GH_REPO = process.env.GH_WORKER_REPO || 'koreaone10-del/BiliReels-Worker';
 const REQUEST_TIMEOUT_MS = 15_000;
 const ALLOWED_DOMAINS = ['bilibili.com', 'bilibili.tv', 'b23.tv', 'bili.im', 'bili2233.cn'];
 const MAX_URL_LENGTH = 4096;
 const MIN_DURATION = 5;
-const MAX_DURATION = 60;
+const MAX_DURATION = 600; // 10 minutes max
 
 function isDomain(hostname, domains) {
   const host = (hostname || '').toLowerCase().replace(/\.$/, '');
@@ -75,14 +77,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'طريقة غير مدعومة.' });
   }
 
-  if (!WORKER_URL) {
-    return res.status(503).json({ ok: false, error: 'العامل غير مفعّل: WORKER_URL غير مضبوط.' });
-  }
+  if (!DOWNLOADER_URL) return res.status(503).json({ ok: false, error: 'DOWNLOADER_URL غير مضبوط.' });
+  if (!GH_TOKEN) return res.status(503).json({ ok: false, error: 'GH_WORKER_TOKEN غير مضبوط.' });
 
   const session = bearerFromHeader(req);
-  if (!verifySessionToken(session)) {
-    return res.status(401).json({ ok: false, error: 'الجلسة منتهية.' });
-  }
+  if (!verifySessionToken(session)) return res.status(401).json({ ok: false, error: 'الجلسة منتهية.' });
 
   const body = await readJsonBody(req);
   if (!body || typeof body !== 'object') return res.status(400).json({ ok: false, error: 'طلب فارغ.' });
@@ -95,37 +94,45 @@ export default async function handler(req, res) {
   if (logo.error) return res.status(400).json({ ok: false, error: logo.error });
 
   const requestId = generateRequestId();
-  const payload = {
-    source_url: src.value,
-    duration: dur.value,
-    logo_url: logo.value,
-    generate_subtitles: body.generate_subtitles === true || body.generate_subtitles === '1',
-    request_id: requestId,
-    client_secret: WORKER_SECRET,
-  };
 
+  // Step 1: Trigger Render download
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${WORKER_URL}/api/process`, {
+    const dlResponse = await fetch(`${DOWNLOADER_URL}/api/download`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        source_url: src.value,
+        request_id: requestId,
+        client_secret: DOWNLOADER_SECRET,
+      }),
       signal: controller.signal,
     });
-    if (!response.ok && response.status !== 202) {
-      const text = await response.text();
-      return res.status(502).json({ ok: false, error: `العامل أعاد خطأ (${response.status}): ${text.slice(0, 150)}` });
+
+    if (!dlResponse.ok && dlResponse.status !== 202) {
+      const text = await dlResponse.text();
+      return res.status(502).json({ ok: false, error: `فشل بدء التحميل: ${text.slice(0, 150)}` });
     }
-    return res.status(202).json({
-      ok: true, requestId,
-      statusUrl: `/api/status?requestId=${encodeURIComponent(requestId)}`,
-      message: 'بدأ العامل معالجة المقطع.',
-    });
   } catch (error) {
-    const msg = error?.name === 'AbortError' ? 'انتهت مهلة الاتصال بالعامل.' : 'تعذر الوصول إلى العامل.';
-    return res.status(502).json({ ok: false, error: msg });
+    return res.status(502).json({ ok: false, error: error?.name === 'AbortError' ? 'انتهت مهلة الاتصال بـRender.' : 'تعذر الوصول إلى Render.' });
   } finally {
     clearTimeout(timeoutId);
   }
+
+  // Step 2: Pre-trigger GitHub Actions (it will download from Upstash after Render finishes)
+  // We don't have the Upstash URL yet, so we'll trigger GitHub from the status endpoint.
+  // For now, return the requestId and let /api/status handle the transition.
+
+  return res.status(202).json({
+    ok: true,
+    requestId,
+    statusUrl: `/api/status?requestId=${encodeURIComponent(requestId)}`,
+    message: 'بدأ التحميل على Render. ستبدأ المعالجة تلقائيًا بعد اكتمال التحميل.',
+    options: {
+      duration: dur.value,
+      logo_url: logo.value,
+      generate_subtitles: body.generate_subtitles === true || body.generate_subtitles === '1',
+    },
+  });
 }
