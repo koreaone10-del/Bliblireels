@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="description" content="BiliReels — إنشاء Reel من فيديو محفوظ على جهازك، بلا رفع أو توكنات">
+  <meta name="description" content="BiliReels — أنشئ Reels عمودية من روابط BiliBili بترجمة وشعار ومدة مخصصة">
   <meta name="theme-color" content="#080a12">
-  <title>BiliReels — معالجة محلية للفيديو</title>
+  <title>BiliReels — استوديو Reels من BiliBili</title>
   <link rel="stylesheet" href="styles.css?v=20261002">
-  <link rel="stylesheet" href="styles-additions.css?v=20261002-local-engine">
+  <link rel="stylesheet" href="styles-additions.css?v=20261002-server-engine">
 </head>
 <body>
   <div class="bg-grid" aria-hidden="true"></div>
@@ -28,141 +28,166 @@
   <main id="top">
     <section class="hero">
       <div class="hero-copy">
-        <div class="eyebrow"><i></i> BILIREELS · LOCAL STUDIO</div>
-        <h1>حوّل فيديوك<br><em>إلى Reel جاهز.</em></h1>
-        <p>اختر ملف فيديو محفوظًا على جهازك. يُقص أول 30 ثانية ويُحوّل إلى فيديو عمودي داخل متصفحك؛ لا نرفع الملف إلى الخادم ولا تحتاج إلى توكن.</p>
+        <div class="eyebrow"><i></i> BILIREELS · SERVER STUDIO</div>
+        <h1>من رابط BiliBili<br><em>إلى Reel جاهز.</em></h1>
+        <p>ألصق رابط فيديو BiliBili. يحمّله العامل المجاني على GitHub، يقصّه إلى Reel عمودي 9:16، يضيف الشعار والترجمة العربية، ثم يمنحك رابطًا مباشرًا لتنزيله. لا ترفع أي ملف من جهازك.</p>
         <div class="hero-actions">
-          <a class="primary" href="#studio">اختر فيديو <span>↓</span></a>
+          <a class="primary" href="#studio">ابدأ الآن <span>↓</span></a>
           <a class="secondary" href="#workflow">كيف يعمل؟</a>
         </div>
         <div class="trust">
-          <span>بلا توكنات</span>
-          <span>ملفك يبقى على جهازك</span>
-          <span>9:16 · MP4</span>
+          <span>مجاني · بلا بطاقة بنكية</span>
+          <span>ترجمة عربية تلقائية</span>
+          <span>720×1280 · MP4</span>
         </div>
       </div>
       <div class="hero-card" aria-label="إعداد Reel عمودي">
         <div class="scan"></div>
-        <div class="mini-top"><span>ON-DEVICE ENGINE</span><b>READY</b></div>
+        <div class="mini-top"><span>SERVER WORKER</span><b>READY</b></div>
         <div class="hero-video"><div class="hero-play">▶</div><span>9:16 REEL</span></div>
         <div class="stats">
-          <div><small>INPUT</small><strong>ملفك</strong></div>
+          <div><small>INPUT</small><strong>رابط</strong></div>
           <div><small>FORMAT</small><strong>9:16</strong></div>
           <div><small>OUTPUT</small><strong>MP4</strong></div>
         </div>
       </div>
     </section>
 
+    <!-- ═══════════════════════ STUDIO ═══════════════════════ -->
     <section class="studio-shell" id="studio">
       <div class="section-head">
         <div>
-          <span class="section-kicker">01 / VIDEO FILE</span>
-          <h2>اختر فيديو من جهازك</h2>
+          <span class="section-kicker">01 / SOURCE</span>
+          <h2>رابط BiliBili</h2>
         </div>
-        <span class="status ready" id="sourceStatus">● بانتظار الملف</span>
+        <span class="status ready" id="sourceStatus">● بانتظار الرابط</span>
       </div>
 
-      <div class="local-source">
-        <label class="file-dropzone" id="fileDropzone" for="videoFileInput">
-          <span class="drop-icon" aria-hidden="true">↑</span>
-          <strong>اضغط لاختيار الفيديو أو اسحبه هنا</strong>
-          <span>MP4 أو MOV أو WebM أو MKV · التحويل لأول 30 ثانية كحد أقصى</span>
-          <b>اختيار ملف</b>
-          <input id="videoFileInput" type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi,.3gp">
-        </label>
-        <p class="privacy-note"><strong>خصوصيتك:</strong> الملف لا يُرفع إلى BiliReels. يعالجه المتصفح على جهازك، وقد يستهلك وقتًا وذاكرة بحسب قوة الجهاز.</p>
-
-        <article class="local-file-card" id="localFileCard" hidden>
-          <div class="local-file-details">
-            <div>
-              <span class="section-kicker">LOCAL SOURCE</span>
-              <h3 id="localFileName" dir="auto">—</h3>
-              <p id="localFileMeta">جارٍ قراءة معلومات الملف…</p>
-            </div>
-            <button class="secondary compact" id="removeFileBtn" type="button">إزالة</button>
+      <div class="source-block">
+        <form id="analyzeForm">
+          <div class="url-row">
+            <span class="link-icon" aria-hidden="true">↗</span>
+            <input id="videoUrl" type="url" placeholder="ألصق رابط BiliBili (bilibili.com، b23.tv، bilibili.tv)…" autocomplete="off" required>
+            <button class="primary compact" id="analyzeBtn" type="submit">فحص الرابط</button>
           </div>
-          <video id="sourceVideoPreview" controls playsinline preload="metadata" aria-label="معاينة ملف المصدر"></video>
-        </article>
-
-        <details class="metadata-details">
-          <summary>معاينة معلومات رابط BiliBili (اختياري — لا ينزّل الفيديو)</summary>
-          <p class="hint">الرابط يعرض العنوان والصورة فقط. لمعالجة المقطع، اختر ملف الفيديو نفسه من جهازك.</p>
-          <form id="analyzeForm">
-            <div class="url-row">
-              <span class="link-icon" aria-hidden="true">↗</span>
-              <input id="videoUrl" type="url" placeholder="ألصق رابط BiliBili للمعاينة فقط…" autocomplete="off" required>
-              <button class="primary compact" id="analyzeBtn" type="submit">معاينة</button>
-            </div>
-          </form>
-          <p class="analysis-message hidden" id="analysisMessage" role="status" aria-live="polite"></p>
-          <div class="remote-preview hidden" id="videoCard">
-            <div class="preview-card">
-              <div class="preview-thumb">
-                <img id="videoThumbnail" alt="صورة مصغرة للفيديو" referrerpolicy="no-referrer" hidden>
-                <div class="preview-thumb-fallback" id="thumbnailFallback" aria-hidden="true">BiliReels</div>
-              </div>
-              <div class="preview-info">
-                <span class="section-kicker">METADATA PREVIEW ONLY</span>
-                <h3 id="videoTitle" dir="auto">—</h3>
-                <div class="preview-meta">
-                  <div><span>DURATION</span><strong id="videoDuration">غير متاح</strong></div>
-                  <div><span>AUTHOR</span><strong id="videoAuthor">غير متاح</strong></div>
-                  <div><span>VIEWS</span><strong id="videoViews">غير متاح</strong></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
+        </form>
+        <p class="hint">يفحص BiliReels العنوان والصورة والمدة فقط قبل بدء المعالجة. لا يبدأ التحميل حتى تضغط «أنشئ Reel».</p>
+        <p class="analysis-message hidden" id="analysisMessage" role="status" aria-live="polite"></p>
       </div>
+
+      <!-- Preview card (hidden until metadata is ready) -->
+      <div class="remote-preview hidden" id="videoCard">
+        <div class="preview-card">
+          <div class="preview-thumb">
+            <img id="videoThumbnail" alt="صورة مصغرة للفيديو" referrerpolicy="no-referrer" hidden>
+            <div class="preview-thumb-fallback" id="thumbnailFallback" aria-hidden="true">BiliReels</div>
+          </div>
+          <div class="preview-info">
+            <span class="section-kicker">METADATA READY</span>
+            <h3 id="videoTitle" dir="auto">—</h3>
+            <div class="preview-meta">
+              <div><span>DURATION</span><strong id="videoDuration">غير متاح</strong></div>
+              <div><span>AUTHOR</span><strong id="videoAuthor">غير متاح</strong></div>
+              <div><span>VIEWS</span><strong id="videoViews">غير متاح</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Access code banner (shown when needed) -->
+      <div class="access-banner hidden" id="accessBanner" role="status">
+        <div class="access-icon">🔒</div>
+        <div class="access-text">
+          <strong>رمز الوصول مطلوب</strong>
+          <span id="accessBannerText">أدخل رمز المالك مرة واحدة فقط لحماية العامل المجاني من الإساءة.</span>
+        </div>
+        <button class="primary compact" id="accessCodeBtn" type="button">إدخال الرمز</button>
+      </div>
+
+      <!-- Reel options (hidden until metadata is ready) -->
+      <div class="reel-options hidden" id="reelOptions">
+        <div class="options-head">
+          <span class="section-kicker">02 / OPTIONS</span>
+          <h2>خيارات الـReel</h2>
+        </div>
+
+        <div class="options-grid">
+          <article class="panel">
+            <div class="panel-title"><span>DURATION</span><span>المدة</span></div>
+            <div class="duration-slider">
+              <input type="range" id="durationSlider" min="5" max="60" step="5" value="30">
+              <output id="durationValue">30s</output>
+            </div>
+            <p class="settings-copy">اختر مدة الـReel بين 5 و60 ثانية. يبدأ القص من بداية الفيديو.</p>
+          </article>
+
+          <article class="panel">
+            <div class="panel-title"><span>SUBTITLES</span><span>الترجمة</span></div>
+            <label class="switch-line" for="subtitlesToggle">
+              <span>ترجمة عربية تلقائية</span>
+              <input type="checkbox" id="subtitlesToggle">
+              <i></i>
+            </label>
+            <p class="settings-copy">يستخدم النموذج المحلي Whisper base. يستغرق وقتًا إضافيًا حسب طول المقطع.</p>
+          </article>
+
+          <article class="panel panel-wide">
+            <div class="panel-title"><span>LOGO</span><span>شعار اختياري (PNG)</span></div>
+            <input type="url" id="logoUrlInput" class="text-input" placeholder="https://example.com/logo.png (اتركه فارغًا إن لم ترغب)" autocomplete="off">
+            <p class="settings-copy">يُدمج الشعار في الزاوية العلوية اليمنى بحجم 110px. رابط HTTPS فقط.</p>
+          </article>
+        </div>
+
+        <div class="process-bar">
+          <div>
+            <span>SERVER PROCESSING</span>
+            <small id="processSummary">30 ثانية · 720×1280 · ترجمة غير مفعّلة · بلا شعار</small>
+          </div>
+          <button class="primary" id="createReelBtn" type="button">أنشئ Reel على الخادم <span>→</span></button>
+        </div>
+      </div>
+
+      <!-- Local file fallback (collapsed by default) -->
+      <details class="local-fallback">
+        <summary>أو استخدم ملفًا محفوظًا على جهازك (معالجة محلية بلا خادم)</summary>
+        <div class="local-source">
+          <label class="file-dropzone" id="fileDropzone" for="videoFileInput">
+            <span class="drop-icon" aria-hidden="true">↑</span>
+            <strong>اضغط لاختيار الفيديو أو اسحبه هنا</strong>
+            <span>MP4 · MOV · WebM · MKV — أول 30 ثانية كحد أقصى</span>
+            <b>اختيار ملف</b>
+            <input id="videoFileInput" type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi,.3gp">
+          </label>
+          <p class="privacy-note"><strong>خصوصية:</strong> الملف لا يُرفع إلى BiliReels. يعالجه المتصفح على جهازك.</p>
+
+          <article class="local-file-card" id="localFileCard" hidden>
+            <div class="local-file-details">
+              <div>
+                <span class="section-kicker">LOCAL SOURCE</span>
+                <h3 id="localFileName" dir="auto">—</h3>
+                <p id="localFileMeta">جارٍ قراءة معلومات الملف…</p>
+              </div>
+              <button class="secondary compact" id="removeFileBtn" type="button">إزالة</button>
+            </div>
+            <video id="sourceVideoPreview" controls playsinline preload="metadata" aria-label="معاينة ملف المصدر"></video>
+          </article>
+        </div>
+      </details>
     </section>
 
-    <section class="workspace hidden" id="workspace">
-      <div class="workspace-head">
-        <div>
-          <span class="section-kicker">02 / OUTPUT</span>
-          <h2>إعداد Reel</h2>
-        </div>
-        <span class="pill">LOCAL · NO TOKEN</span>
-      </div>
-      <div class="workspace-grid">
-        <article class="panel">
-          <div class="panel-title"><span>FORMAT</span><span>صيغة الإخراج</span></div>
-          <div class="format-card">
-            <strong>9:16</strong>
-            <span>Vertical Reel</span>
-            <b>720×1280 · MP4 · H.264/AAC</b>
-          </div>
-        </article>
-        <article class="panel">
-          <div class="panel-title"><span>DURATION</span><span>المدة</span></div>
-          <div class="format-card duration-card">
-            <strong>30s</strong>
-            <span>أول 30 ثانية كحد أقصى</span>
-            <b>الفيديو الأقصر يبقى بمدته</b>
-          </div>
-        </article>
-        <article class="panel panel-wide">
-          <div class="panel-title"><span>PROCESSING</span><span>المعالجة</span></div>
-          <p class="settings-copy">يملأ الفيديو العمودي مع الحفاظ على الإطار كاملًا فوق خلفية ضبابية. يُحافَظ على الصوت إذا كان المتصفح قادرًا على التقاطه.</p>
-        </article>
-      </div>
-      <div class="process-bar">
-        <div><span>ON-DEVICE PROCESSING</span><small id="processSummary">30 ثانية كحد أقصى · 720×1280 · لا رفع للخادم</small></div>
-        <button class="primary" id="processVideoBtn" type="button" disabled>إنشاء Reel على جهازي <span>→</span></button>
-      </div>
-    </section>
-
+    <!-- ═══════════════════════ SERVER PROGRESS ═══════════════════════ -->
     <section class="result hidden" id="progressSection" aria-live="polite">
       <div class="result-head">
-        <div><span class="section-kicker">03 / PROCESSING</span><h2>المعالجة المحلية</h2></div>
+        <div><span class="section-kicker">03 / PROCESSING</span><h2>العامل المجاني يعمل…</h2></div>
         <span class="status busy" id="progressStatusText">جارٍ التحضير…</span>
       </div>
       <div class="progress" id="processingProgress" role="progressbar" aria-label="تقدم معالجة الفيديو" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <i id="progressBarFill" class="progress-indeterminate"></i>
       </div>
-      <p id="progressPercentage" class="progress-copy">ملفك لا يغادر جهازك.</p>
+      <p id="progressPercentage" class="progress-copy">يُحمَّل الفيديو من BiliBili على خادم GitHub.</p>
     </section>
 
+    <!-- ═══════════════════════ SERVER RESULT ═══════════════════════ -->
     <section class="result hidden" id="resultsSection">
       <div class="result-head">
         <div><span class="section-kicker">04 / READY</span><h2>Reel جاهز</h2></div>
@@ -170,35 +195,52 @@
       </div>
       <div class="reel-preview-wrap" id="reelPreviewWrap" hidden>
         <video id="reelVideo" controls playsinline preload="metadata" aria-label="معاينة Reel الناتج"></video>
-        <p id="reelPreviewStatus" role="status" aria-live="polite">المعاينة جاهزة على جهازك.</p>
+        <p id="reelPreviewStatus" role="status" aria-live="polite">المعاينة جاهزة.</p>
       </div>
-      <p class="worker-note" id="resultNote">اكتمل إنشاء الفيديو محليًا.</p>
-      <a class="primary full download-link" id="downloadReel" href="#" download="bilireels-reel-30s.mp4">تنزيل ملف MP4</a>
+      <p class="worker-note" id="resultNote">اكتمل إنشاء الفيديو على الخادم.</p>
+      <a class="primary full download-link" id="downloadReel" href="#" download="bilireels-reel.mp4">تنزيل ملف MP4</a>
+      <p class="run-link-wrap"><a id="runLink" href="#" target="_blank" rel="noopener" class="run-link hidden">مراجعة سجل العامل على GitHub ↗</a></p>
     </section>
 
+    <!-- ═══════════════════════ FEATURES ═══════════════════════ -->
     <section id="features" class="features">
-      <div class="section-title"><span class="section-kicker">BUILT FOR CREATORS</span><h2>تحويل مباشر من جهازك.</h2></div>
+      <div class="section-title"><span class="section-kicker">BUILT FOR CREATORS</span><h2>من رابط إلى Reel في دقائق.</h2></div>
       <div class="feature-grid">
-        <article><b>01</b><h3>بلا توكنات</h3><p>لا GitHub token ولا رمز تشغيل خاص.</p></article>
-        <article><b>02</b><h3>خصوصية محلية</h3><p>لا نرفع ملف الفيديو إلى خادم BiliReels.</p></article>
-        <article><b>03</b><h3>9:16 عمودي</h3><p>720×1280 مع إطار كامل وخلفية ضبابية.</p></article>
-        <article><b>04</b><h3>Reel واحد</h3><p>أول 30 ثانية كحد أقصى؛ اختيار اللقطات بالذكاء الاصطناعي غير مفعّل في هذه النسخة.</p></article>
+        <article><b>01</b><h3>بلا رفع ملف</h3><p>ألصق الرابط فقط؛ لا حاجة لتحميل الفيديو على جهازك.</p></article>
+        <article><b>02</b><h3>مجاني 100%</h3><p>GitHub Actions + Upstash Blob ضمن الحدود المجانية.</p></article>
+        <article><b>03</b><h3>9:16 عمودي</h3><p>720×1280 مع إطار كامل وخلفية ضبابية احترافية.</p></article>
+        <article><b>04</b><h3>ترجمة عربية</h3><p>Whisper محلي يحرق الترجمة داخل الفيديو مباشرة.</p></article>
       </div>
     </section>
 
     <section id="workflow" class="workflow">
-      <div><span class="section-kicker">SIMPLE FLOW</span><h2>ملف من جهازك.<br>معالجة محلية.<br><em>MP4 جاهز.</em></h2></div>
+      <div><span class="section-kicker">SIMPLE FLOW</span><h2>ألصق.<br>اختر.<br><em>حمّل.</em></h2></div>
       <div class="steps">
-        <div><span>01</span><p>احفظ الفيديو المسموح لك باستخدامه على جهازك</p></div>
-        <div><span>02</span><p>اختر الملف من الاستوديو</p></div>
-        <div><span>03</span><p>أنشئ أول 30 ثانية بصيغة عمودية</p></div>
-        <div><span>04</span><p>عاين MP4 ونزّله</p></div>
+        <div><span>01</span><p>ألصق رابط BiliBili العام</p></div>
+        <div><span>02</span><p>اختر المدة والشعار والترجمة</p></div>
+        <div><span>03</span><p>أدخل رمز المالك مرة واحدة</p></div>
+        <div><span>04</span><p>انتظر دقيقة، ثم حمّل MP4</p></div>
       </div>
     </section>
   </main>
 
-  <footer><strong>BiliReels</strong><span>Local Video Studio</span><small>© 2026 BiliReels</small></footer>
+  <footer><strong>BiliReels</strong><span>Server Studio</span><small>© 2026 BiliReels</small></footer>
+
+  <!-- ═══════════════════════ ACCESS CODE DIALOG ═══════════════════════ -->
+  <div class="dialog-backdrop hidden" id="accessCodeDialog" role="dialog" aria-modal="true" aria-labelledby="accessCodeTitle">
+    <div class="dialog">
+      <h3 id="accessCodeTitle">رمز الوصول</h3>
+      <p>أدخل رمز المالك الذي ضبطته في متغيرات Vercel. يُحفظ في جلستك لمدة ساعتين، ولا يُرسل في كل طلب.</p>
+      <input type="password" id="accessCodeInput" class="text-input" placeholder="رمز الوصول" autocomplete="off" dir="ltr">
+      <p class="dialog-error hidden" id="accessCodeError" role="alert"></p>
+      <div class="dialog-actions">
+        <button class="secondary compact" id="accessCodeCancel" type="button">إلغاء</button>
+        <button class="primary compact" id="accessCodeSave" type="button">تفعيل</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261002-local-engine"></script>
+  <script type="module" src="app.js?v=20261002-server-engine"></script>
 </body>
 </html>
