@@ -1,7 +1,7 @@
 {
   "name": "bilireels",
   "version": "2.0.0",
-  "description": "BiliReels — on-device video processing plus optional GitHub Actions worker for BiliBili clips",
+  "description": "BiliReels — BiliBili metadata preview, Render downloader, GitHub Actions Reel worker, and local fallback",
   "private": true,
   "type": "module",
   "engines": {

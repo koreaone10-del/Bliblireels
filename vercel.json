@@ -8,10 +8,10 @@
       "maxDuration": 10
     },
     "api/dispatch.js": {
-      "maxDuration": 15
+      "maxDuration": 30
     },
     "api/status.js": {
-      "maxDuration": 10
+      "maxDuration": 30
     }
   },
   "headers": [

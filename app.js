@@ -18,7 +18,7 @@ const SUPPORTED_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi',
 const ACCESS_TOKEN_KEY = 'bilireels.session.v1';
 const ACCESS_TOKEN_TTL_MS = 2 * 60 * 60 * 1000 - 60 * 1000; // 2h minus 1m safety
 const POLL_INTERVAL_MS = 5000;
-const POLL_MAX_ATTEMPTS = 120; // 10 minutes max
+const POLL_MAX_ATTEMPTS = 420; // 35 minutes: includes the 30-minute Actions limit plus startup margin
 
 // ═══════════════════════════════════════════════════════════════
 // Element references
@@ -88,6 +88,7 @@ let ffmpegLoadPromise = null;
 let isProcessing = false;
 let pollTimer = null;
 let pollAttempts = 0;
+let lastRunUrl = '';
 let activeRequestId = null;
 const temporaryObjectUrls = new Set();
 
@@ -550,6 +551,7 @@ async function handleCreateReel() {
   createReelBtn.disabled = true;
   createReelBtn.textContent = 'جارٍ الإرسال…';
   resetServerOutput();
+  lastRunUrl = '';
 
   try {
     const token = await ensureSession({ interactive: true });
@@ -560,7 +562,7 @@ async function handleCreateReel() {
       return;
     }
 
-    setProgress('جارٍ إرسال الطلب إلى العامل…', 0.05, 'يبدأ الـworkflow على GitHub.');
+    setProgress('جارٍ إرسال الطلب إلى العامل…', null, 'تبدأ أولًا مرحلة تنزيل المصدر.');
     setSourceStatus('● العامل يعمل', 'busy');
 
     const payload = {
@@ -573,7 +575,7 @@ async function handleCreateReel() {
     const dispatch = await dispatchToServer(payload, token);
     activeRequestId = dispatch.requestId;
     pollAttempts = 0;
-    setProgress('العامل بدأ العمل…', 0.12, 'سيستغرق التحميل والمعالجة 1-3 دقائق عادة.');
+    setProgress('العامل بدأ العمل…', null, 'تنزيل المصدر ثم تحويله إلى Reel عمودي.');
 
     pollTimer = window.setTimeout(async function tick() {
       if (!activeRequestId) return;
@@ -582,6 +584,11 @@ async function handleCreateReel() {
       if (pollAttempts > POLL_MAX_ATTEMPTS) {
         stopPolling();
         setProgress('انتهت مهلة الانتظار.', 0, 'راجع سجل GitHub لمعرفة ما حدث.');
+        if (lastRunUrl && runLink) {
+          runLink.href = lastRunUrl;
+          setVisible(runLink, true);
+          setVisible(resultsSection, true);
+        }
         setSourceStatus('● مهلة', 'error');
         isProcessing = false;
         createReelBtn.disabled = false;
@@ -591,13 +598,13 @@ async function handleCreateReel() {
 
       try {
         const status = await pollStatus(activeRequestId, token);
+        if (status.runUrl) lastRunUrl = status.runUrl;
 
         if (status.state === 'starting' || status.state === 'queued') {
-          setProgress('في قائمة الانتظار…', 0.15, status.message || 'بانتظار دور العامل.');
+          setProgress('في قائمة الانتظار…', null, status.message || 'بانتظار دور العامل.');
         } else if (status.state === 'in_progress') {
-          // Estimate progress from poll count (rough).
-          const estimate = Math.min(0.9, 0.2 + pollAttempts * 0.03);
-          setProgress('جارٍ التحميل والمعالجة…', estimate, status.message || 'العامل يعمل الآن.');
+          // The two external workers do not expose a reliable numeric percentage.
+          setProgress('جارٍ التحميل والمعالجة…', null, status.message || 'العامل يعمل الآن.');
         } else if (status.state === 'completed' && status.videoUrl) {
           stopPolling();
           await showServerResult(status);
@@ -638,7 +645,22 @@ async function handleCreateReel() {
           openAccessDialog('انتهت الجلسة. أعد الإدخال.');
           return;
         }
-        // Transient error: retry a few times.
+        if ([400, 403, 404, 409, 422, 503].includes(error.status)) {
+          stopPolling();
+          setProgress('توقفت المعالجة', 0, error.message || 'تحقق من إعدادات العامل ثم أعد المحاولة.');
+          setSourceStatus('● يحتاج إجراء', 'error');
+          if (lastRunUrl && runLink) {
+            runLink.href = lastRunUrl;
+            setVisible(runLink, true);
+            setVisible(resultsSection, true);
+          }
+          isProcessing = false;
+          createReelBtn.disabled = false;
+          createReelBtn.textContent = 'أعد المحاولة →';
+          return;
+        }
+        // Transient Render/GitHub error: show a live retry state instead of failing silently.
+        setProgress('انقطع الاتصال مؤقتًا…', null, 'نعيد الاتصال بالعامل تلقائيًا.');
         pollTimer = window.setTimeout(tick, POLL_INTERVAL_MS * 2);
       }
     }, POLL_INTERVAL_MS);

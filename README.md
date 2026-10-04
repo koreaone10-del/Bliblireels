@@ -1,27 +1,51 @@
-# BiliReels — Local Reel Studio
+# BiliReels
 
-BiliReels now processes a video file selected by the visitor directly in the browser. It does not upload the video, start GitHub Actions, or require GitHub/Vercel API tokens. The optional BiliBili link form retrieves page metadata only; it does not download media.
+معاينة BiliBili تعمل عبر `/api/metadata`. تحويل رابط BiliBili إلى Reel يمر بمرحلتين خارج Vercel: Render ينزّل أول مدة المقطع المطلوبة (+ هامش keyframe) إلى Upstash، ثم GitHub Actions يقصه إلى MP4 عمودي 720×1280 ويرفع النتيجة.
 
-## Visitor flow
+## التدفق
 
-1. Save a video file to the device using a method permitted for that content.
-2. Select the local file in BiliReels.
-3. The browser plays and captures up to the first 30 seconds, fitting the complete frame into a 9:16 canvas with a blurred background.
-4. A pinned ffmpeg.wasm UMD/core build converts that short capture into a 720×1280 H.264/AAC MP4. The visitor can preview and download the result.
+1. رمز الوصول يبادل عبر `/api/auth` جلسة HMAC قصيرة العمر؛ لا يُرسل رمز الوصول إلى العامل.
+2. `/api/dispatch` يتحقق من الرابط والمدة ثم يرسل طلب تنزيل إلى Render عبر `WORKER_URL`، مستخدمًا `DOWNLOADER_SECRET` من الخادم فقط.
+3. Render يقبل نطاقات BiliBili المحددة، ينزّل أول 5–65 ثانية وفق الاختيار، ويرفع ملفًا مؤقتًا إلى Upstash Blob.
+4. `/api/status` يقرأ حالة Render وGitHub Actions بالتوازي. عند اكتمال التنزيل يحجز مرحلة المعالجة مرة واحدة ويشغّل workflow الخاص `process-reel.yml`.
+5. GitHub Actions ينتج H.264/AAC MP4 عموديًا، ويرفع النتيجة، ثم يحذف ملف المصدر المؤقت باستخدام `@upstash/blob` SDK. فشل التنظيف يظهر كتحذير ولا يفشل الفيديو الناتج.
+6. رابط MP4 النهائي عام وقابل للتنزيل لمن يملكه؛ لا تُرفع ملفات الجهاز في وضع المعالجة المحلية.
 
-Files are held in local browser object URLs and are not sent to the BiliReels server. The pinned ffmpeg.wasm 0.12.15 UMD bundle and its small worker are served from this site (`vendor/ffmpeg/`) so the worker is same-origin. On first conversion, the browser fetches the pinned ffmpeg-core 0.12.10 JavaScript/WebAssembly files (about 31 MB total) from jsDelivr and converts them to local blob URLs; this transfers the processing library, not the visitor's source video. The included FFmpeg.wasm files are MIT-licensed; see `vendor/ffmpeg/LICENSE`. On-device conversion can be slow or unavailable on older/low-memory mobile devices. Use a current Chrome, Edge, or Safari browser and keep the page open until the export finishes. Source videos under 30 seconds produce shorter outputs.
+تحتفظ خدمة Render بحالة المهمة في الذاكرة، لذا أبقِ الصفحة مفتوحة حتى يكتمل التشغيل. قد يتأخر أول طلب بعد خمول Render بسبب إيقاظ الخدمة المجانية؛ وإذا أعيد تشغيل الخدمة وفُقدت حالة مهمة، تتوقف الواجهة برسالة واضحة بدل انتظار لا نهائي. يفشل التشغيل بوضوح إذا انتهت حصة GitHub Actions أو لم تتوفر صلاحيات workflow.
 
-The optional `/api/metadata` endpoint remains for public BiliBili title/thumbnail previews. It is not used as a media source. Subtitles, logo overlay, AI highlight selection, arbitrary duration, and batch output are not implemented and are not represented as working controls.
+## متغيرات البيئة
 
-## Deployment
+### Vercel
 
-The site is static plus the optional metadata function. No `GH_WORKER_TOKEN`, `BILIREELS_ACCESS_CODE`, worker repository, storage bucket, or server-side media processing is needed. Remove the old token-gated API files from the deployment; revoke any worker token created solely for the previous workflow and delete its Vercel environment variables after confirming the new deployment is live.
+- `BILIREELS_ACCESS_CODE`: رمز وصول طويل (16 محرفًا على الأقل).
+- `WORKER_URL`: عنوان خدمة Render مثل `https://bilireels-worker.onrender.com`.
+- `DOWNLOADER_SECRET`: نفس القيمة التي ولّدها Render لمتغير `WORKER_SECRET`.
+- `GH_WORKER_TOKEN`: Fine-grained token يملك `Actions: Read and write` على المستودع الخاص للعامل.
+- `GH_WORKER_REPO`: اختياري؛ الافتراضي `koreaone10-del/BiliReels-Worker`.
 
-## Local checks
+### Render
+
+يضبط `render.yaml` متغيرات `UPSTASH_BLOB_URL` و`UPSTASH_BLOB_TOKEN` و`UPSTASH_BUCKET_NAME` يدويًا، ويولّد `WORKER_SECRET`. انسخ قيمة السر إلى Vercel مرة واحدة؛ لا تضعها في JavaScript أو المستودع.
+
+### GitHub Actions — مستودع العامل الخاص
+
+أضف GitHub Actions secrets التالية: `UPSTASH_BLOB_URL`, `UPSTASH_BLOB_TOKEN`, `UPSTASH_BUCKET_NAME`. يجب أن يسمح token الخاص بالـbucket بالقراءة والكتابة والحذف، لأن workflow ينظف الملف الوسيط بعد المعالجة. لا يُستخدم كوكي BiliBili ولا يتجاوز worker DRM أو تسجيل الدخول.
+
+## التخزين والخصوصية
+
+يُرفع المصدر الخام مؤقتًا إلى bucket عام لأن GitHub runner يحتاج قراءته؛ خطوة تنظيف مضمونة (`if: always()`) تحذف كائن `raw_<request-id>_<timestamp>.mp4` عند بدء workflow أو فشله. إذا لم يبدأ workflow أصلًا، يبقى الكائن الخام في Upstash حتى تنظيف يدوي. الناتج النهائي عام بالتصميم حتى يستطيع المتصفح تنزيله. لا تستخدم الخدمة للمواد التي تحتاج سرية أو حقوق وصول خاصة.
+
+## المدة والتكلفة
+
+النسخة الحالية تحد المقطع إلى 5–60 ثانية، الافتراضي 30 ثانية، وحجم المصدر الوسيط إلى 250 MiB. يثبت `yt-dlp` على `2026.08.19`. تُستخدم فقط الطبقات المجانية لكل من Vercel وRender وGitHub Actions وUpstash؛ لكل مزود حدود خمول/حصة وقد يتوقف التشغيل عند بلوغها. Whisper يُثبت فقط عند تفعيل الترجمة لتقليل دقائق Actions.
+
+## فحوص محلية
 
 ```bash
 node --check app.js
+node --input-type=module --check < api/auth.js
+node --input-type=module --check < api/dispatch.js
+node --input-type=module --check < api/status.js
 node --input-type=module --check < api/metadata.js
+python3 -m py_compile ../BiliReels-Worker/server.py ../BiliReels-Worker/scripts/process_reel.py
 ```
-
-The browser workflow was also verified with a local five-second synthetic MP4: it reached 100%, showed a playable preview, and downloaded a valid 720×1280 H.264/AAC MP4 (4.96 seconds). The source file was not uploaded.
